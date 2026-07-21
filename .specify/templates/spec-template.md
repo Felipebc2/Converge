@@ -103,6 +103,17 @@
 - **[Entity 1]**: [What it represents, key attributes without implementation]
 - **[Entity 2]**: [What it represents, relationships to other entities]
 
+### Constitution Compliance *(mandatory)*
+
+<!--
+  ACTION REQUIRED: Check this specification against .specify/memory/constitution.md.
+  List each principle with a bearing on this feature and how the spec satisfies it,
+  or record a NEEDS CLARIFICATION / flagged conflict per Principle I if a normative
+  source conflict exists.
+-->
+
+- **[Principle reference, e.g., I. Versioned Sources of Truth]**: [How this spec complies, or NEEDS CLARIFICATION]
+
 ## Success Criteria *(mandatory)*
 
 <!--
