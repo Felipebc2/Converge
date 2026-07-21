@@ -9,7 +9,7 @@ description: "Task list template for feature implementation"
 
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
+**Tests**: Tests are mandatory according to Constitution Principle VI and must be selected according to risk. Red-Green-Refactor is mandatory for domain logic, application use cases, contracts, security boundaries, and bug fixes. UI, configuration, infrastructure, and adapters must include appropriate tests in the same change, without requiring strict test-first ordering.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -21,10 +21,12 @@ description: "Task list template for feature implementation"
 
 ## Path Conventions
 
-- **Single project**: `src/`, `tests/` at repository root
-- **Web app**: `backend/src/`, `frontend/src/`
-- **Mobile**: `api/src/`, `ios/src/` or `android/src/`
-- Paths shown below assume single project - adjust based on plan.md structure
+- **Rust domain/application/adapters**: `crates/[crate-name]/src/`
+- **React/TypeScript UI**: `apps/web/`
+- **Generated TypeScript contracts**: `packages/`
+- **SQLx migrations**: `migrations/`
+- **Tests (contract, integration, E2E)**: `tests/`
+- Paths shown below are illustrative — adjust to the concrete crates/apps/packages captured in plan.md
 
 <!--
   ============================================================================
@@ -64,12 +66,12 @@ description: "Task list template for feature implementation"
 
 Examples of foundational tasks (adjust based on your project):
 
-- [ ] T005 Setup database schema and migrations framework
-- [ ] T006 [P] Implement authentication/authorization framework
-- [ ] T007 [P] Setup API routing and middleware structure
-- [ ] T008 Create base models/entities that all stories depend on
-- [ ] T009 Configure error handling and logging infrastructure
-- [ ] T010 Setup environment configuration management
+- [ ] T005 Setup database schema and migrations framework in migrations/
+- [ ] T006 [P] Implement authentication/authorization framework in crates/[crate-name]/src/
+- [ ] T007 [P] Setup API/command routing and middleware structure in crates/[crate-name]/src/
+- [ ] T008 Create base domain models/entities that all stories depend on in crates/[crate-name]/src/domain/
+- [ ] T009 Configure error handling and logging infrastructure in crates/[crate-name]/src/
+- [ ] T010 Setup environment configuration management in crates/[crate-name]/src/
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -81,19 +83,21 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 1 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 1 (MANDATORY — scope per risk, Constitution Principle VI) ⚠️
 
-> **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
+> Tests are mandatory according to Constitution Principle VI and must be selected according to risk.
+> Red-Green-Refactor is mandatory for domain logic, application use cases, contracts, security boundaries, and bug fixes.
+> UI, configuration, infrastructure, and adapters must include appropriate tests in the same change, without requiring strict test-first ordering.
 
-- [ ] T011 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T012 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T011 [P] [US1] Contract test for [endpoint] in tests/contract/[name].rs
+- [ ] T012 [P] [US1] Integration test for [user journey] in tests/integration/[name].rs
 
 ### Implementation for User Story 1
 
-- [ ] T013 [P] [US1] Create [Entity1] model in src/models/[entity1].py
-- [ ] T014 [P] [US1] Create [Entity2] model in src/models/[entity2].py
-- [ ] T015 [US1] Implement [Service] in src/services/[service].py (depends on T013, T014)
-- [ ] T016 [US1] Implement [endpoint/feature] in src/[location]/[file].py
+- [ ] T013 [P] [US1] Create [Entity1] model in crates/[crate-name]/src/domain/[entity1].rs
+- [ ] T014 [P] [US1] Create [Entity2] model in crates/[crate-name]/src/domain/[entity2].rs
+- [ ] T015 [US1] Implement [Service] in crates/[crate-name]/src/application/[service].rs (depends on T013, T014)
+- [ ] T016 [US1] Implement [endpoint/feature] in crates/[crate-name]/src/adapters/[file].rs or apps/web/src/[location]/[file].tsx
 - [ ] T017 [US1] Add validation and error handling
 - [ ] T018 [US1] Add logging for user story 1 operations
 
@@ -107,16 +111,16 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 2 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 2 (MANDATORY — scope per risk, Constitution Principle VI) ⚠️
 
-- [ ] T019 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T020 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T019 [P] [US2] Contract test for [endpoint] in tests/contract/[name].rs
+- [ ] T020 [P] [US2] Integration test for [user journey] in tests/integration/[name].rs
 
 ### Implementation for User Story 2
 
-- [ ] T021 [P] [US2] Create [Entity] model in src/models/[entity].py
-- [ ] T022 [US2] Implement [Service] in src/services/[service].py
-- [ ] T023 [US2] Implement [endpoint/feature] in src/[location]/[file].py
+- [ ] T021 [P] [US2] Create [Entity] model in crates/[crate-name]/src/domain/[entity].rs
+- [ ] T022 [US2] Implement [Service] in crates/[crate-name]/src/application/[service].rs
+- [ ] T023 [US2] Implement [endpoint/feature] in crates/[crate-name]/src/adapters/[file].rs or apps/web/src/[location]/[file].tsx
 - [ ] T024 [US2] Integrate with User Story 1 components (if needed)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
@@ -129,16 +133,16 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 3 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 3 (MANDATORY — scope per risk, Constitution Principle VI) ⚠️
 
-- [ ] T025 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T026 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T025 [P] [US3] Contract test for [endpoint] in tests/contract/[name].rs
+- [ ] T026 [P] [US3] Integration test for [user journey] in tests/integration/[name].rs
 
 ### Implementation for User Story 3
 
-- [ ] T027 [P] [US3] Create [Entity] model in src/models/[entity].py
-- [ ] T028 [US3] Implement [Service] in src/services/[service].py
-- [ ] T029 [US3] Implement [endpoint/feature] in src/[location]/[file].py
+- [ ] T027 [P] [US3] Create [Entity] model in crates/[crate-name]/src/domain/[entity].rs
+- [ ] T028 [US3] Implement [Service] in crates/[crate-name]/src/application/[service].rs
+- [ ] T029 [US3] Implement [endpoint/feature] in crates/[crate-name]/src/adapters/[file].rs or apps/web/src/[location]/[file].tsx
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -155,7 +159,7 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] TXXX [P] Documentation updates in docs/
 - [ ] TXXX Code cleanup and refactoring
 - [ ] TXXX Performance optimization across all stories
-- [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
+- [ ] TXXX [P] Additional unit tests per Constitution Principle VI in tests/unit/ or colocated with source
 - [ ] TXXX Security hardening
 - [ ] TXXX Run quickstart.md validation
 
@@ -180,7 +184,7 @@ Examples of foundational tasks (adjust based on your project):
 
 ### Within Each User Story
 
-- Tests (if included) MUST be written and FAIL before implementation
+- Per Constitution Principle VI: tests for domain logic, application use cases, contracts, and security boundaries MUST be written and FAIL before implementation (Red-Green-Refactor); tests for UI, configuration, infrastructure, and adapters MUST be included in the same change without requiring test-first ordering
 - Models before services
 - Services before endpoints
 - Core implementation before integration
@@ -200,13 +204,13 @@ Examples of foundational tasks (adjust based on your project):
 ## Parallel Example: User Story 1
 
 ```bash
-# Launch all tests for User Story 1 together (if tests requested):
-Task: "Contract test for [endpoint] in tests/contract/test_[name].py"
-Task: "Integration test for [user journey] in tests/integration/test_[name].py"
+# Launch all tests for User Story 1 together:
+Task: "Contract test for [endpoint] in tests/contract/[name].rs"
+Task: "Integration test for [user journey] in tests/integration/[name].rs"
 
 # Launch all models for User Story 1 together:
-Task: "Create [Entity1] model in src/models/[entity1].py"
-Task: "Create [Entity2] model in src/models/[entity2].py"
+Task: "Create [Entity1] model in crates/[crate-name]/src/domain/[entity1].rs"
+Task: "Create [Entity2] model in crates/[crate-name]/src/domain/[entity2].rs"
 ```
 
 ---
@@ -247,7 +251,7 @@ With multiple developers:
 - [P] tasks = different files, no dependencies
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
-- Verify tests fail before implementing
+- Verify tests fail before implementing domain logic, application use cases, contracts, and security boundaries (Red-Green-Refactor); other tests MUST still be included in the same change per Constitution Principle VI
 - Per Constitution Principle X (Human-Controlled Version Control), agents MUST NOT stage, commit, or push after tasks; report a change summary, files changed, verification results, risks, and exact suggested Git commands for the human maintainer instead
 - Stop at any checkpoint to validate story independently
 - Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence

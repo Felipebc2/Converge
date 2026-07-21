@@ -1,11 +1,25 @@
 <!--
 Sync Impact Report
-Version change: (template, unratified) → 1.0.0
-Rationale: Initial ratification of the Converge Project Constitution. MAJOR version
-per semantic versioning policy for the first governing release (establishes the
-full principle set and governance model).
+Version change: 1.0.0 → 1.0.1
+Rationale: Clarifies the Constitution's authority boundary and aligns the task
+template with the already-ratified testing requirements.
 
-Modified principles: N/A (initial adoption)
+Modified principles:
+- Governance / Authority — scoped supersession to repository-level project
+  practices, templates, and agent instructions, and added an explicit
+  carve-out: this Constitution never overrides platform, legal, or security
+  policies. Wording clarification only; does not change which of the ten
+  Core Principles apply or their intent — PATCH.
+- X. Human-Controlled Version Control — dropped "automation" from the list of
+  actors barred from repository-publishing actions and added an explicit
+  carve-out: CI/CD automation MAY build, test, sign, checksum, and publish
+  releases, but only when triggered by an approved semantic version tag that
+  the human maintainer created manually. "Releases" was removed from the
+  human-exclusive-authority list accordingly, since publishing is now an
+  automated consequence of a human-created tag rather than a human-invoked
+  action itself; staging, commits, pushes, merges, tags, and pull requests
+  remain exclusively human-invoked. Clarifies an existing non-negotiable
+  (human-gated publishing) rather than relaxing it — PATCH.
 
 Added sections:
 - Core Principles I–X (Versioned Sources of Truth; Modular Clean Architecture;
@@ -28,10 +42,16 @@ Templates requiring updates:
 - ✅ .specify/templates/spec-template.md — added a "Constitution Compliance"
   subsection under Requirements to satisfy Governance's compliance-review rule.
 - ✅ .specify/templates/tasks-template.md — added a "Constitution Compliance"
-  checkpoint in Phase 1 (Setup) and removed the "Commit after each task or
+  checkpoint in Phase 1 (Setup); removed the "Commit after each task or
   logical group" note in Notes, which conflicted with Principle X
-  (Human-Controlled Version Control). Replaced with guidance to report
-  suggested Git commands for the human maintainer.
+  (Human-Controlled Version Control), replacing it with guidance to report
+  suggested Git commands for the human maintainer; replaced all
+  "tests are OPTIONAL / if requested" language (Tests intro, User Story test
+  headers, Dependencies, Notes) with Principle VI's actual rule — tests
+  mandatory per risk, Red-Green-Refactor scoped to domain/use cases/contracts/
+  security/bug fixes, other tests included in the same change without
+  test-first ordering; and replaced generic Python-style path examples with
+  Converge's real layout (crates/, apps/web/, packages/, migrations/, tests/).
 - ✅ .specify/templates/checklist-template.md — no change required; checklist
   content is generated per-request and inherits compliance review from the
   spec/plan/tasks artifacts it references.
@@ -180,17 +200,19 @@ than trailing it, are what keep Principle I's sources of truth actually true.
 
 ### X. Human-Controlled Version Control
 
-AI agents, agent integrations, automation, and Spec Kit workflows MUST NOT
-execute `git add`, `git commit`, `git push`, `git merge`, `git tag`,
-`git rebase`, `git reset`, pull-request creation, or any equivalent
-repository-publishing action. They MAY execute read-only Git commands such as
-status, diff, show, branch inspection, and log. At the end of every
-implementation task, the agent MUST provide: (1) a concise change summary,
-(2) the files changed, (3) verification and test results, (4) known risks or
-pending work, and (5) exact suggested Git commands for the human maintainer to
-review and execute manually. Destructive Git operations are prohibited. The
-human maintainer retains exclusive authority over staging, commits, pushes,
-merges, tags, releases, and pull requests.
+AI agents, agent integrations, and Spec Kit workflows MUST NOT execute
+`git add`, `git commit`, `git push`, `git merge`, `git tag`, `git rebase`,
+`git reset`, pull-request creation, or equivalent repository-publishing
+actions. They MAY execute read-only Git commands such as status, diff, show,
+branch inspection, and log. At the end of every implementation task, the
+agent MUST provide: (1) a concise change summary, (2) the files changed,
+(3) verification and test results, (4) known risks or pending work, and
+(5) exact suggested Git commands for the human maintainer to review and
+execute manually. CI/CD automation MAY build, test, sign, checksum, and
+publish releases only when triggered by an approved semantic version tag
+created manually by the human maintainer. Destructive Git operations are
+prohibited. The human maintainer retains exclusive authority over staging,
+commits, pushes, merges, tags, and pull requests.
 
 **Rationale**: Keeping repository-publishing actions exclusively human-invoked
 ensures every change that reaches shared history had a human review it first,
@@ -198,8 +220,9 @@ regardless of how autonomous the authoring agent was.
 
 ## Governance
 
-**Authority**: This Constitution supersedes all other project practices,
-templates, and agent instructions. Where a conflict exists between this
+**Authority**: This Constitution supersedes all repository-level project practices,
+templates, and agent instructions, but never overrides platform, legal,
+or security policies. Where a conflict exists between this
 Constitution and any other document, the Constitution governs until the
 conflicting document is amended.
 
@@ -226,4 +249,4 @@ Principle III.
 and review MUST include an explicit Constitution compliance check before it is
 considered complete.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-21 | **Last Amended**: 2026-07-21
+**Version**: 1.0.1 | **Ratified**: 2026-07-21 | **Last Amended**: 2026-07-21
