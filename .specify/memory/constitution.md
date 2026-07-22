@@ -61,10 +61,11 @@ Templates requiring updates:
   `.specify/memory/constitution.md` for governance constraints dynamically.
   No outdated agent-specific references found.
 
-Follow-up TODOs: None. PRD.md, PRODUCT.md, DESIGN.md, and ADR records referenced
-by Principle I do not yet exist in this repository; their absence does not
-block ratification since Principle I governs their authority once created, not
-their existence.
+Follow-up TODOs: None. `docs/PRD.md`, `docs/PRODUCT.md`, and `docs/DESIGN.md`
+referenced by Principle I now exist and are approved (2026-07-22), closing the
+gap noted at 1.0.1 ratification. `MVP.md` (referenced by PRD.md Section 20) and
+ADR records remain not yet created; their absence does not block ratification
+since Principle I governs their authority once created, not their existence.
 -->
 
 # Converge Constitution
