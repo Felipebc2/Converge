@@ -178,23 +178,39 @@ architecture.
 
 **Enforcement**: `Cargo.toml`: `sqlx = { version = "=0.9.0", default-features = false, features = ["sqlite", "runtime-tokio", "macros", "migrate"] }`; `sqlx-cli` pinned via `cargo install sqlx-cli --version 0.9.0 --locked` in CI; `migrations/` with SQLx's forward-only naming convention; `.sqlx/` offline query cache committed for CI builds without live DB access. `sqlx` is a normal dependency only in `adapters-persistence` and `service`.
 
-**Unsafe-Rust FFI boundary note (new — correction 13)**: SQLx's SQLite
-driver depends transitively on `libsqlite3-sys`, which wraps the C SQLite
-library via FFI and therefore contains `unsafe` code — this is standard for
-*any* SQLite binding in any language and is outside Converge's own source
-tree. The Rust quality baseline's "no unsafe Rust without separate
-justification and approval" rule applies to **Converge-owned code**
-(the crates under `crates/` and `apps/web`'s Rust surface, i.e. none, since
-the frontend has none) — it does not, and cannot, retroactively rewrite a
-third-party C-interop crate. No `unsafe` block exists or is planned in any
-Converge-owned crate for Slice 0; the architecture boundary check (Testing
-Plan, `plan.md`) verifies that `#![forbid(unsafe_code)]` (or an equivalent
-Clippy lint set to deny) is active in `domain`, `application`, `contracts`,
-`adapters-http`, and `adapters-persistence` — everywhere except `service`,
-which also carries no `unsafe` of its own but is excluded from the lint
-requirement only because it is the composition root most likely to need a
-documented, reviewed exception in a later slice; none exists yet. This is a
-documentation correction, not a design change — no boundary was ever waived.
+**Unsafe-Rust FFI boundary note (new — correction 13; tightened — correction
+5, this pass)**: SQLx's SQLite driver depends transitively on
+`libsqlite3-sys`, which wraps the C SQLite library via FFI and therefore
+contains `unsafe` code — this is standard for *any* SQLite binding in any
+language and is outside Converge's own source tree. The Rust quality
+baseline's "no unsafe Rust without separate justification and approval"
+rule applies to **Converge-owned code** (the crates under `crates/` and
+`apps/web`'s Rust surface, i.e. none, since the frontend has none) — it
+does not, and cannot, retroactively rewrite a third-party C-interop crate.
+No `unsafe` block exists or is planned in any Converge-owned crate for
+Slice 0; the architecture boundary check (Testing Plan, `plan.md`) verifies
+that `#![forbid(unsafe_code)]` is active in **all six** crates uniformly —
+`domain`, `application`, `contracts`, `adapters-http`,
+`adapters-persistence`, **and `service`** (corrected this pass: the
+previous draft excluded `service` "as the composition root most likely to
+need a documented, reviewed exception in a later slice," but no such
+exception was ever written, requested, or justified — that carve-out
+granted an unused permission rather than reflecting an actual need, exactly
+the kind of unjustified exception the Rust quality baseline's "unsafe Rust
+prohibited unless separately justified and approved" rule exists to
+prevent by default. `service`'s own responsibilities — binding a TCP
+listener, spawning the Axum server, generating a token via `rand::OsRng`,
+signal handling via `tokio::signal`, and the corrected parent-liveness
+watchdog (Launcher shutdown and orphan-process behavior, below) — are all
+achievable through safe, standard-library-or-`tokio`-provided APIs with no
+FFI of any kind; the corrected watchdog design specifically avoids
+`libc::prctl`/Windows Job Object FFI bindings that an earlier design
+sketch considered, precisely so this uniform `forbid(unsafe_code)` could
+hold with nothing to work around). This is a documentation correction, not
+a design change — no protective boundary was ever waived; the previous
+`service` exception simply described a possibility that never
+materialized into an actual exception, and removing it closes that gap
+before a later slice could have exploited it without review.
 
 ### Rust→TypeScript contract generation — ts-rs (chosen over specta)
 
@@ -296,8 +312,11 @@ re-parsing the full JSON payload on every duplicate check.
 
 **Decision**: `rand = "=0.10.2"` **(Corrected: exact pin)**, using
 `rand::rngs::OsRng` (CSPRNG-backed via the OS entropy source through
-`getrandom`), encoded base64url (unpadded) for the ephemeral auth token
-bytes.
+`getrandom`), encoded base64url (unpadded) via `base64 = "=0.22.1"`'s
+`URL_SAFE_NO_PAD` engine (its own pinned entry, "base64url encoding —
+base64," above — new this pass; this section always specified the
+encoding but never named the crate performing it) for the ephemeral auth
+token bytes.
 
 **Rationale**: `rand` 0.10.2 is current stable; its OS-backed RNG is the
 standard, audited path for security-sensitive randomness across the Rust
@@ -376,6 +395,156 @@ and does not participate in the Architecture Boundary allowlist check
 (dev-dependencies are exempt from that check by construction — see Testing
 Plan).
 
+### HTTP integration test client — reqwest **(New this pass — was described
+only as "a `reqwest`-class client," never chosen or pinned)**
+
+**Decision**: `reqwest = "=0.13.4"`, `dev-dependency` only, in the
+integration test crate/target under `tests/integration/`.
+
+**Rationale**: The previous pass's Testing Plan described HTTP integration
+tests as using "a `reqwest`-class HTTP client" — naming a category, not a
+concrete, exactly-pinned dependency, exactly the placeholder pattern this
+pass's correction 2 targets. `reqwest` is the de facto standard, actively
+maintained high-level HTTP client in the Rust ecosystem, built on the same
+`tower`/`hyper` foundation `axum` (the chosen server framework) already
+uses, so no second, unrelated HTTP stack enters the dependency graph purely
+for testing. It provides the ergonomic request-building and assertion
+surface integration tests need (setting `Host`/`Origin`/`Authorization`
+headers explicitly, reading status/headers/body) that a raw
+`tokio::net::TcpStream` would require hand-rolling HTTP framing for.
+
+**Alternatives considered**: `hyper` directly (lower-level, what `reqwest`
+itself is built on) — rejected as unnecessarily low-level for test code
+whose job is asserting behavior, not exercising the HTTP stack's own
+framing correctness. `ureq` (a simpler, synchronous client) — rejected: the
+test suite already runs under `tokio` (per the architecture boundary and
+the WebSocket test client above), so an async-native client avoids mixing
+a blocking client into an async test harness.
+
+**Source**: [reqwest on crates.io](https://crates.io/crates/reqwest)
+
+**Enforcement**: workspace `Cargo.toml` `[dev-dependencies]` (or the
+integration test crate's own `Cargo.toml`): `reqwest = "=0.13.4"`. Being a
+dev-dependency, it never appears in the compiled `service` binary and does
+not participate in the Architecture Boundary allowlist check, matching
+`tokio-tungstenite`'s treatment above.
+
+### base64url encoding — base64 **(New this pass — the token-generation
+section always assumed base64url encoding but never pinned the crate that
+performs it)**
+
+**Decision**: `base64 = "=0.22.1"`, using its `URL_SAFE_NO_PAD` engine.
+
+**Rationale**: The Token/entropy generation section below has always
+specified base64url (unpadded) encoding for the ephemeral auth token bytes
+and explained *why* (RFC 4648 §5's alphabet is the one HTTP "token"
+character set, RFC 7230, actually permits in an `Authorization: Bearer`
+value or a `Sec-WebSocket-Protocol` value) — but never named or pinned the
+crate performing that encoding, an omission this pass closes. The `base64`
+crate is the canonical, actively maintained Rust implementation of RFC
+4648, with a purpose-built `URL_SAFE_NO_PAD` `Engine` constant matching
+this exact requirement (unpadded base64url) with no custom alphabet/padding
+configuration needed.
+
+**Alternatives considered**: Hand-rolling the encoding — rejected,
+needless reimplementation of a well-specified, widely-audited encoding for
+a security-sensitive value (the auth token). `data-encoding` (an
+alternative, also-maintained base-N crate) — rejected in favor of `base64`
+as the more widely adopted, more frequently audited choice for this exact
+purpose in the Rust ecosystem, with no feature `data-encoding` offers that
+this project needs.
+
+**Source**: [base64 on crates.io](https://crates.io/crates/base64)
+
+**Enforcement**: `Cargo.toml`: `base64 = "=0.22.1"` as a normal dependency
+of `service` only — token generation and encoding happen once, at startup,
+in the composition root (Project Structure, `plan.md`).
+
+### Wire serialization — serde / serde_json **(New this pass — implied by
+every `#[derive(serde::Serialize, serde::Deserialize)]` in `contracts/`
+and by `ts-rs`'s own dependency on Serde, but never given their own pinned
+entry)**
+
+**Decision**: `serde = "=1.0.229"` (feature `derive`), `serde_json =
+"=1.0.151"`.
+
+**Rationale**: `serde`'s derive macros are what every wire type in
+`contracts/` (`HealthResponse`, `HealthStatus`, `ApiError`, `WsMessage`)
+uses to implement `Serialize`/`Deserialize`, and what `ts-rs`'s
+`serde-compat` feature reads to generate matching TypeScript (already
+documented above in the `ts-rs` section) — Serde is a transitive
+requirement of the chosen architecture, not an independent choice, but it
+was never given its own pinned entry in the previous pass despite every
+Serde attribute (`rename_all`, `tag`, `rename_all_fields`) in `contracts/`
+depending on the exact version's attribute support. `serde_json` is the
+concrete JSON backend: `adapters-http` uses it (via `axum::Json`, which
+depends on it, and directly to build `ApiError` bodies) and
+`adapters-persistence` uses it to produce the canonical serialized
+`payload` bytes `data-model.md`'s Event identity section hashes with
+BLAKE3 — both re-verified current stable directly against the crates.io
+API on 2026-07-23.
+
+**Alternatives considered**: none for `serde` itself — it is the
+unconditional ecosystem standard `ts-rs`, `axum`, and `sqlx` all already
+depend on transitively; pinning it explicitly and exactly, rather than
+leaving it to float as an unpinned transitive dependency, is what this
+pass's correction closes. For JSON specifically, `simd-json` (a faster,
+SIMD-accelerated parser) — rejected: no measured JSON-parsing bottleneck
+exists in a local, single-user, low-payload-size service to justify its
+additional unsafe-SIMD-adjacent complexity and stricter platform
+requirements.
+
+**Source**: [serde on crates.io](https://crates.io/crates/serde), [serde_json on crates.io](https://crates.io/crates/serde_json)
+
+**Enforcement**: `Cargo.toml`: `serde = { version = "=1.0.229", features = ["derive"] }` as a normal dependency of `contracts` (and transitively available wherever `contracts` types are used); `serde_json = "=1.0.151"` as a normal dependency of `adapters-http` and `adapters-persistence` (Project Structure allowlists, `plan.md`).
+
+### Timestamp implementation — time **(New this pass — `occurred_at`/
+`recorded_at`/`checkedAt`/`serverTime` were always specified as ISO 8601
+UTC strings, but no crate was ever chosen or pinned to produce or validate
+them)**
+
+**Decision**: `time = "=0.3.54"`, features `formatting`, `parsing`, `serde`
+in `adapters-http`; feature `parsing` only in `application`.
+
+**Rationale**: Every ISO 8601/RFC 3339 timestamp this slice produces or
+consumes needs exactly one of two operations: **formatting** "now" as an
+RFC 3339 string (`checkedAt` in the HTTP health response, `serverTime` in
+the WebSocket `hello`/`pong` messages — both generated live, in
+`adapters-http`, at request time) or **parsing/validating** a
+producer-supplied RFC 3339 string (`occurred_at`, validated in
+`application` before a `RecordProbeEvent` call is accepted — `data-model.md`'s
+Event identity section). `recorded_at` needs neither: it is generated by a
+SQLite column `DEFAULT` expression (`data-model.md`), not by Rust code, so
+no crate is needed for it at all — deliberately narrowing where a
+timestamp dependency is required at all, not just which crate satisfies it.
+`time` was chosen over `chrono` for this narrow, UTC-only need: `time`'s
+API is focused on exactly the formatting/parsing operations needed here
+without pulling in a full IANA timezone database this project never
+queries (Converge's local service only ever produces or consumes UTC
+instants — no timezone conversion is a requirement anywhere in spec.md).
+Scoping `application`'s feature set to `parsing` only (no `formatting`) is
+a small, deliberate architecture-boundary signal: `application` never
+computes "now" — reading the wall clock would be an untestable,
+time-dependent side effect inside a layer required to compile and test in
+isolation (Constitution II, FR-009) — it only ever validates a
+caller-supplied string.
+
+**Alternatives considered**: `chrono` — a legitimate, more feature-rich
+alternative and arguably more ubiquitous by raw download count, but
+rejected here specifically because its core value (full timezone-aware
+`DateTime<Tz>` arithmetic) is unused surface area for a project that only
+ever handles UTC instants; `time`'s narrower scope is a better fit, not a
+security or correctness distinction between the two (both are current,
+actively maintained crates with no outstanding advisory as of this
+verification). Hand-formatting via `strftime`-style manual string
+building — rejected, needless reimplementation of RFC 3339 formatting/
+parsing edge cases (fractional seconds, the trailing `Z`) a maintained
+crate already handles correctly.
+
+**Source**: [time on crates.io](https://crates.io/crates/time)
+
+**Enforcement**: `Cargo.toml`: `time = { version = "=0.3.54", features = ["formatting", "parsing", "serde"] }` as a normal dependency of `adapters-http`; `time = { version = "=0.3.54", features = ["parsing"] }` as a normal dependency of `application` (Project Structure allowlists, `plan.md`).
+
 ### React
 
 **Decision**: `react` / `react-dom` `19.2.8`.
@@ -395,18 +564,74 @@ Rejected.
 
 ### Vite
 
-**Decision**: `vite@8.1.0`.
+**Decision**: `vite@8.1.5` **(Corrected this pass: was pinned `8.1.0`)**.
 
 **Rationale**: Current stable Vite 8 line, compatible with Node 24 LTS and
-React 19 via `@vitejs/plugin-react`.
+React 19 via `@vitejs/plugin-react`. Re-checked directly against the npm
+registry on 2026-07-23 (this pass's verification date) and found that
+`8.1.0` — pinned and labeled "current stable" in the previous pass — had
+already been superseded by two patch releases (`8.1.5` is npm's
+`dist-tags.latest`). Per this pass's explicit instruction not to call a
+now-superseded version "current stable," the pin is updated to the actual
+current patch; nothing about the *decision* (Vite 8, not 7) changes, only
+the exact patch pinned.
 
 **Alternatives considered**: Vite 7 — superseded; no reason to start a new
-project a major version behind. Rejected.
+project a major version behind. Rejected. Staying on `8.1.0` with an
+honest "slightly behind current, no compatibility reason" rationale — also
+rejected: no compatibility conflict motivates staying behind, so there is
+no honest rationale for *not* moving to the current patch (contrast
+TypeScript below, where a real compatibility conflict is the documented
+reason for not pinning the newest release).
 
-**Source**: [Vite releases](https://vite.dev/releases), [Vite 8 announcement](https://vite.dev/blog/announcing-vite8)
+**Source**: [Vite releases](https://vite.dev/releases), [Vite 8 announcement](https://vite.dev/blog/announcing-vite8), npm registry (`registry.npmjs.org/vite`), queried directly 2026-07-23.
 
 **Enforcement**: `apps/web/package.json`: exact devDependency pin
-`"vite": "8.1.0"`.
+`"vite": "8.1.5"`.
+
+### @vitejs/plugin-react **(New this pass — was assumed but never pinned)**
+
+**Decision**: `@vitejs/plugin-react@6.0.4`.
+
+**Rationale**: The official Vite plugin providing React's JSX transform and
+Fast Refresh — required for any Vite + React setup; the previous pass's
+Vite rationale already named it in prose ("via `@vitejs/plugin-react`")
+without ever giving it its own pinned entry, an omission this pass closes.
+6.0.4 is current stable, verified directly against the npm registry on
+2026-07-23, and tracks Vite 8's plugin API.
+
+**Alternatives considered**: none — this is the canonical, Vite-team-
+maintained plugin for React; no credible alternative exists for this exact
+purpose (contrast `@vitejs/plugin-react-swc`, a legitimate but different
+choice trading some correctness edge cases for build speed — not adopted
+here since this slice has no build-speed problem to justify the trade).
+
+**Source**: [@vitejs/plugin-react on npm](https://www.npmjs.com/package/@vitejs/plugin-react)
+
+**Enforcement**: `apps/web/package.json` devDependency:
+`"@vitejs/plugin-react": "6.0.4"`, registered as the first plugin in
+`vite.config.ts`.
+
+### @types/react / @types/react-dom **(New this pass — were assumed but never pinned)**
+
+**Decision**: `@types/react@19.2.17`, `@types/react-dom@19.2.3`.
+
+**Rationale**: TypeScript type declarations for React 19 — required since
+`react`/`react-dom` themselves ship no bundled `.d.ts` files. The previous
+pass's React rationale said "matching `@types/react`/`@types/react-dom`"
+without pinning either; both are re-verified current stable directly
+against the npm registry on 2026-07-23 and track the pinned
+`react@19.2.8`/`react-dom@19.2.8` major.minor line (DefinitelyTyped
+versions React types by React's own major.minor, not lockstep patch, which
+is why `@types/react-dom`'s patch number differs from `react-dom`'s own).
+
+**Alternatives considered**: none — these are the only maintained type
+declarations for this React line.
+
+**Source**: [@types/react on npm](https://www.npmjs.com/package/@types/react), [@types/react-dom on npm](https://www.npmjs.com/package/@types/react-dom)
+
+**Enforcement**: `apps/web/package.json` devDependencies:
+`"@types/react": "19.2.17"`, `"@types/react-dom": "19.2.3"`.
 
 ### TypeScript
 
@@ -418,15 +643,33 @@ shipping until 7.1 — `typescript-eslint` explicitly closed a "support TS7"
 request as not-planned for 7.0. Since this project's CI-enforced lint gate
 depends on `typescript-eslint` working correctly, pinning the last fully
 tool-compatible release (6.0.3) is the lower-risk choice for a foundation
-being laid today.
+being laid today. **Re-verified this pass (2026-07-23), with stronger
+evidence than the previous pass cited**: `typescript-eslint@8.65.0`'s own
+published `package.json#peerDependencies.typescript` range, fetched
+directly from the npm registry, is `">=4.8.4 <6.1.0"` — this is not merely
+"no stable API yet" but a hard, machine-enforced upper bound that
+explicitly excludes `7.0.2` (and even `6.1.x`) outright; installing
+`typescript@7.0.2` alongside the pinned `typescript-eslint@8.65.0` would
+fail (or at minimum warn loudly under) any peer-dependency check. This is
+the concrete mechanism behind the previously-cited "closed as not-planned"
+GitHub issue, confirmed directly against the currently-published package
+metadata rather than taken on the issue tracker's word alone. Pinning
+`typescript@6.0.3` — squarely inside that range — is not an arbitrary
+lag; it is the only choice that keeps the CI-enforced lint gate installable
+at all under the pinned `typescript-eslint` version. This is explicitly not
+an instance of calling a superseded version "current stable" (contrast the
+Vite correction above, this pass's instruction): 6.0.3 is deliberately
+*not* current, for a documented, machine-verifiable compatibility reason,
+which is exactly the kind of exception that instruction carves out.
 
 **Alternatives considered**: `typescript@7.0.2` (nominally "current") —
 rejected for now specifically because of the `typescript-eslint`
 incompatibility, which would either break the lint gate or force an
 immediate compatibility-shim workaround on day one. Revisit once
-`typescript-eslint` ships official TS7 support.
+`typescript-eslint` ships official TS7 support (its `peerDependencies`
+range, re-checked at that time, is the concrete signal to watch for).
 
-**Source**: [TypeScript 6.0 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-6-0/), [TypeScript 7.0 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/)
+**Source**: [TypeScript 6.0 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-6-0/), [TypeScript 7.0 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/), npm registry `typescript-eslint` package metadata (`registry.npmjs.org/typescript-eslint`), queried directly 2026-07-23.
 
 **Enforcement**: root and `apps/web/package.json`: exact devDependency pin
 `"typescript": "6.0.3"`, referenced by `tsc --noEmit` and by
@@ -435,14 +678,22 @@ Part 1 Cross-Compatibility Flags below).
 
 ### TanStack Query
 
-**Decision**: `@tanstack/react-query@5.101.2`.
+**Decision**: `@tanstack/react-query@5.101.4` **(Corrected this pass: was
+pinned `5.101.2`)**.
 
 **Rationale**: Current stable v5 release — the version line the technical
-baseline already requires for Rust-derived server state.
+baseline already requires for Rust-derived server state. Re-checked
+directly against the npm registry on 2026-07-23: `5.101.2` — pinned and
+labeled "current stable" in the previous pass — had already been
+superseded by two further patch releases (`5.101.4` is npm's
+`dist-tags.latest`). Same correction class as Vite above: no compatibility
+reason motivates staying behind, so the pin moves to the actual current
+patch rather than keeping a now-inaccurate "current stable" label on a
+version that had drifted behind the registry.
 
-**Source**: [@tanstack/react-query versions](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions)
+**Source**: [@tanstack/react-query versions](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions), npm registry (`registry.npmjs.org/@tanstack/react-query`), queried directly 2026-07-23.
 
-**Enforcement**: `apps/web/package.json`: `"@tanstack/react-query": "5.101.2"`.
+**Enforcement**: `apps/web/package.json`: `"@tanstack/react-query": "5.101.4"`.
 
 ### Zustand
 
@@ -667,7 +918,9 @@ script or `cargo install just --version 1.57.0 --locked`) pinned to
 `1.57.0`; CI installs the same pinned version; a `just --version` guard
 documented for contributors.
 
-### GitHub Actions **(Corrected: exact commit SHAs, were placeholders)**
+### GitHub Actions **(Corrected: exact commit SHAs, were placeholders —
+this pass adds the still-missing `actions/setup-node` SHA and closes two
+literal `<exact-sha>` placeholders left in `plan.md`)**
 
 **Decision**: Linux runner `ubuntu-24.04`; Windows runner `windows-2022`
 (explicit labels, not `-latest`);
@@ -675,6 +928,14 @@ documented for contributors.
 commit the `v7.0.1` tag — and, as of this writing, the floating `v7`
 tag — resolves to, verified directly against the GitHub REST API on
 2026-07-22, with `# v7.0.1` as an inline comment for human readability);
+`actions/setup-node@820762786026740c76f36085b0efc47a31fe5020` (the exact
+commit the `v7.0.0` tag — and the floating `v7` tag — resolves to, verified
+directly against the GitHub REST API on 2026-07-23, with `# v7.0.0` as an
+inline comment) with `node-version-file: .nvmrc` — **new this pass**: the
+previous draft's Node.js section referenced "CI's `actions/setup-node` step
+(or equivalent)" without ever resolving it to a pinned SHA alongside the
+other two actions, an inconsistency this pass closes so all three GitHub
+Actions dependencies are treated identically;
 `dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c` (the
 latest commit on that repository's `master` branch as of 2026-07-16,
 likewise verified directly against the GitHub REST API, with
@@ -704,15 +965,19 @@ June 2026 VS2026 auto-migration, reintroducing `-latest`-style drift;
 acceptable as a documented future upgrade once that image stabilizes.
 `actions-rs/toolchain` — rejected, unmaintained since 2023.
 
-**Source**: [GitHub Actions image migration changelog](https://github.blog/changelog/2026-05-14-github-actions-upcoming-image-migrations/), [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain), [actions/checkout releases](https://github.com/actions/checkout/releases), GitHub REST API (`api.github.com/repos/actions/checkout/tags`, `api.github.com/repos/dtolnay/rust-toolchain/commits/master`), queried directly on 2026-07-22.
+**Source**: [GitHub Actions image migration changelog](https://github.blog/changelog/2026-05-14-github-actions-upcoming-image-migrations/), [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain), [actions/checkout releases](https://github.com/actions/checkout/releases), [actions/setup-node releases](https://github.com/actions/setup-node/releases), GitHub REST API (`api.github.com/repos/actions/checkout/tags`, `api.github.com/repos/actions/setup-node/tags`, `api.github.com/repos/dtolnay/rust-toolchain/commits/master`), queried directly on 2026-07-22 (checkout, rust-toolchain) and 2026-07-23 (setup-node).
 
 **Enforcement**: `.github/workflows/*.yml`: `runs-on: ubuntu-24.04` /
 `runs-on: windows-2022`; `uses:
 actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1`; `uses:
+actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0` with
+`node-version-file: .nvmrc`; `uses:
 dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # 2026-07-16`
 with `toolchain: "1.97.1"`, `components: "rustfmt, clippy"`; a
 Dependabot/Renovate config to keep SHA pins current under human review
-rather than silently floating.
+rather than silently floating. `plan.md`'s CI section previously carried
+two literal `<exact-sha>` placeholders instead of these real values —
+corrected there this pass to match exactly what is pinned here.
 
 ### Cross-Compatibility Flags
 
@@ -720,8 +985,14 @@ rather than silently floating.
   above the ≥1.85 floor and specifically fixes a miscompilation, making it
   the safer pin over 1.97.0.
 - **Rust 1.97.1 + sqlx 0.9.0 / tokio 1.53.1 / axum 0.8.9 / tower-http
-  0.7.0 / uuid 1.24.0 / blake3 1.8.5 / tokio-tungstenite 0.30.0**: no known
-  incompatibility; all track MSRVs comfortably below 1.97.1.
+  0.7.0 / uuid 1.24.0 / blake3 1.8.5 / tokio-tungstenite 0.30.0 / reqwest
+  0.13.4 / base64 0.22.1 / serde 1.0.229 / serde_json 1.0.151 / time
+  0.3.54** (the last five newly pinned this pass): no known incompatibility;
+  all track MSRVs comfortably below 1.97.1.
+- **Vite 8.1.5 + @vitejs/plugin-react 6.0.4 + React 19.2.8 + @types/react
+  19.2.17 / @types/react-dom 19.2.3** (newly pinned this pass): no known
+  incompatibility; `@vitejs/plugin-react` tracks Vite 8's plugin API and
+  React 19's JSX runtime, and both `@types/*` packages track React 19.
 - **TypeScript 6.0.3 vs 7.0.x**: the one deliberate version-selection flag,
   not a hard incompatibility — TypeScript 7.0 is GA but `typescript-eslint`
   has no stable-API support until 7.1, so 6.0.3 is pinned instead. Track
@@ -1134,10 +1405,11 @@ CORS (FR-005), denial observability (FR-006), the authenticated health path
 before connection acceptance (FR-022) are all satisfied by exact-match
 server-side checks independent of which transport carries the token.
 
-**Launcher shutdown and orphan-process behavior (new — correction 7)**: the
-supervisor (`scripts/dev.mjs`) registers handlers for `SIGINT`/`SIGTERM`
-(and the equivalent Windows console-control events via Node's normal
-cross-platform signal handling) that:
+**Launcher shutdown and orphan-process behavior (new — correction 7;
+mechanism replaced this pass — correction 4)**: the supervisor
+(`scripts/dev.mjs`) registers handlers for `SIGINT`/`SIGTERM` (and the
+equivalent Windows console-control events via Node's normal cross-platform
+signal handling) for the **cooperative** shutdown path:
 
 1. Send a termination signal to the Rust service child first (it holds no
    client connections that need a graceful drain in this slice — no
@@ -1151,16 +1423,97 @@ cross-platform signal handling) that:
    returning control to the shell is a reliable signal that no Converge
    process remains.
 
-This is validated by two new integration-test classes (Testing Plan,
-`plan.md`): a **launcher shutdown test** (send the supervisor a termination
-signal, assert both children's process IDs no longer exist within the
-bounded timeout) and an **orphan-process test** (kill the supervisor itself
-abruptly, e.g. `SIGKILL`, bypassing its own cleanup handlers, and assert
-that a *subsequent* `just dev` invocation still succeeds — i.e. a crashed
-supervisor cannot leave a listening socket or child process that blocks the
-next run; since ports are OS-assigned per run, a leaked prior child at most
-wastes resources, never blocks a fresh instance, which the test asserts
-explicitly rather than assumes).
+**The previous draft's orphan-process test asserted the wrong thing
+(correction 4, this pass).** It checked that "a *subsequent* `just dev`
+invocation still succeeds" after `SIGKILL`-ing the supervisor — a proxy
+signal, not a lifecycle guarantee: since the OS assigns a fresh port every
+run, a leaked, still-running prior Rust/Vite child would not necessarily
+block a new instance from starting at all, so that test could pass even in
+a world where orphaned processes silently accumulate. The actual guarantee
+FR-001/FR-018 need is that killing the supervisor **abruptly** — bypassing
+every line of its own cleanup code, including the cooperative path above,
+since `SIGKILL`/`TerminateProcess` cannot be caught or handled by the
+receiving process at all — still results in **both specific child
+processes terminating**, not merely in a later `just dev` happening to
+work. That requires a mechanism that does not depend on the supervisor
+executing any code at the moment it dies, which the cooperative path above
+structurally cannot provide (it only runs when the supervisor is signaled
+by a catchable signal and gets to run its handler).
+
+**Corrected mechanism: OS-level pipe/channel teardown, not cooperative
+signaling.** Both children detect the supervisor's death via a channel
+whose closure is enforced by the operating system itself when the
+supervisor's process handle/file descriptors are torn down at exit — for
+*any* reason, including `SIGKILL` — not by the supervisor executing any
+handler. This is a stronger guarantee than a catchable signal can ever
+provide, and it is available in an equivalent form on both Linux and
+Windows without a platform-specific native binding on either side:
+
+1. **Vite child** (already `fork()`ed, per the corrected Bootstrap
+   Ordering above, specifically to get a private IPC channel): Node's
+   `child_process.fork()` IPC channel is backed by an OS pipe (POSIX) or
+   named pipe (Windows) between the two processes. When the supervisor
+   process exits — cooperatively or via `SIGKILL`/`TerminateProcess` — the
+   OS unconditionally closes every file descriptor/handle that process
+   held open, including its end of that pipe, *as part of process
+   teardown itself*, with no cooperation required from the exiting
+   process. The Vite child has a `process.on("disconnect", ...)` handler
+   registered from startup (not only in the cooperative-shutdown path)
+   that fires the instant Node observes that pipe closure, and immediately
+   closes its own dev-server listener and exits. This is a standard,
+   documented Node.js behavior (the `'disconnect'` event on a forked
+   child), not a bespoke mechanism.
+2. **Rust service child** (`spawn()`ed, not `fork()`ed — it is not a Node
+   process, so it gets no automatic IPC channel): the supervisor spawns it
+   with its `stdin` connected to an OS pipe whose write end only the
+   supervisor holds (Node's default `stdio: ["pipe", ...]` behavior for a
+   spawned child already provides this — no extra configuration beyond
+   *not* setting `stdin` to `"inherit"` or `"ignore"`). `service` runs a
+   background `tokio` task, started at startup, that awaits a read on
+   `tokio::io::stdin()`. Exactly like the Vite case, when the supervisor's
+   process exits for any reason, the OS closes its end of that pipe as
+   part of unconditional process teardown; the Rust side's read then
+   returns `Ok(0)` (EOF) — not an error, but the standard "the writer is
+   gone" signal every OS-level pipe gives on both Linux and Windows. The
+   background task treats EOF as "the supervisor is gone" and triggers the
+   exact same shutdown path `service` uses for `SIGTERM` (closing the
+   listener, letting in-flight work finish within a bounded timeout, then
+   exiting).
+3. Both mechanisms rest on the same underlying property — **OS-level
+   handle/pipe teardown on process exit is unconditional and requires no
+   cooperation from the exiting process** — applied through the one
+   channel each child already has for another purpose (Vite's IPC channel
+   from the bootstrap design; the Rust child's `stdin` pipe, which the
+   supervisor holds open specifically for this purpose and never writes to
+   under normal operation). No `libc::prctl(PR_SET_PDEATHSIG, ...)` (Linux-
+   only) and no Windows Job Object (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`,
+   Windows-only) binding is used — either would need `unsafe` FFI in a
+   Converge-owned crate (`service`), which correction 5's uniform
+   `#![forbid(unsafe_code)]` (Constraints, `plan.md`) now rules out, and
+   each would need a *different* platform-specific implementation besides.
+   The pipe/IPC-closure approach is the one mechanism family that is
+   already portable across Linux and Windows through Node's own
+   cross-platform `child_process` abstraction and Rust's own
+   cross-platform async I/O, with no native binding on either side.
+
+This is validated by two integration-test classes (Testing Plan,
+`plan.md`), the second corrected this pass:
+
+- **Launcher shutdown test** (cooperative path): send the supervisor
+  `SIGINT`/`SIGTERM`, assert both children's specific process IDs (captured
+  before the signal) no longer exist within the bounded timeout.
+- **Orphan-process test — corrected this pass (correction 4)**: `SIGKILL`
+  the supervisor itself, bypassing every cleanup handler it registered —
+  the cooperative path above never runs — and assert the **same two
+  specific child PIDs are confirmed exited** within the bounded timeout,
+  via a portable liveness probe (POSIX: `process.kill(pid, 0)` raising
+  `ESRCH` once the process is gone; Windows: the equivalent
+  process-existence check Node's `child_process`/a small helper exposes).
+  This directly exercises the pipe/IPC-closure mechanism above rather than
+  inferring success from a later `just dev` run succeeding — the previous
+  draft's test — which is removed as a stand-in for this direct assertion
+  (a subsequent `just dev` succeeding remains true as a *consequence*, but
+  is no longer what the test relies on to prove the guarantee).
 
 **Validation approach**: automated integration tests assert (a) a request
 with a missing/stale/wrong token, mismatched `Host`, mismatched `Origin`, or

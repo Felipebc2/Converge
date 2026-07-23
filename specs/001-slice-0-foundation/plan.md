@@ -195,6 +195,21 @@ below.*
 
 No violation requires an entry in Complexity Tracking.
 
+**Pre-design gate re-verification (final consistency pass)**: none of this
+pass's nine corrections change any Principle's status above. II is
+strengthened, not merely preserved (`#![forbid(unsafe_code)]` now covers
+all six crates uniformly, correction 5, rather than five-of-six). III is
+strengthened (the CORS preflight is now fully specified, correction 1, and
+the orphan-process guarantee is now a direct, mechanism-backed assertion
+rather than an indirect proxy check, correction 4). I is unaffected in kind
+— every new dependency pinned this pass (`reqwest`, `base64`, `serde`,
+`serde_json`, `time`, `@vitejs/plugin-react`, the React type packages) is
+an implementation detail of already-approved requirements (FR-002–FR-008,
+FR-012, FR-019–FR-021), not a new one, and the `spec.md` `Status` field
+change (correction 8) documents an approval state that already existed in
+practice (this plan already presupposed it) rather than granting a new one.
+No principle regresses; all ten remain **PASS**.
+
 ## Project Structure
 
 ### Documentation (this feature)
@@ -427,18 +442,26 @@ full reasoning, prior-art comparison, and validation approach.
 ## Contracts and Transport (Phase 1 — full contracts in `contracts/`)
 
 - **HTTP**: `GET /api/health`, defined in `contracts/http-health.md`.
-  Validation order — `Host` (400) → `Origin`/CORS (403) → token (401) —
-  first failure wins, never partially trusted. `200` body:
+  Validation order — `Host` (400) → `Origin` (403, now required on every
+  request, not merely "when present" — corrected this pass, correction 1) →
+  token (401) — first failure wins, never partially trusted. `200` body:
   `{status, service, version, checkedAt}` (camelCase on the wire —
-  corrected, correction 5).
+  corrected, correction 5). The `OPTIONS` CORS preflight is now specified
+  as its own, separately ordered check sequence (`Host` → `Origin` →
+  requested method `GET` → requested header `authorization`), returning an
+  exact three-header closed-CORS grant on success and no grant at all on
+  any failure — carries no bearer token by the CORS specification itself,
+  never checked (new — correction 1, this pass; full detail in
+  `contracts/http-health.md`'s CORS Preflight section).
 - **WebSocket**: `GET /api/ws` (upgrade), defined in
   `contracts/websocket-proof.md`. Same `Host`(400)/`Origin`-allowlist(403)/
   token(401) ordering, checked before the upgrade completes; the client
   offers two subprotocol values (`converge.v1` and the token-bearing
   value), the server validates the token-bearing one and selects only
   `converge.v1` in response (corrected — correction 1). On success: exactly
-  two message shapes exist, tagged by a `"type"` field
-  (`{"type":"hello","serverTime":...}` /
+  three message shapes exist (corrected this pass — correction 9: the
+  previous draft said "two" here while listing all three), tagged by a
+  `"type"` field (`{"type":"hello","serverTime":...}` /
   `{"type":"ping"}` / `{"type":"pong","serverTime":...}`) — no terminal,
   PTY, or provider streaming semantics (Out of Scope, spec.md).
 - **Generation**: `crates/contracts` holds the Rust types
@@ -500,10 +523,17 @@ required to satisfy that category; neither alone does.
 
 **CI (GitHub Actions)**: triggers `pull_request` and `push` to the default
 branch (FR-015, SC-006), matching `research.md`'s pinned `ubuntu-24.04` /
-`windows-2022` runners, `actions/checkout@<exact-sha> # v7.0.1`, and
-SHA-pinned `dtolnay/rust-toolchain@<exact-sha>` with
-`toolchain: "1.97.1"` (both SHAs corrected from placeholders — correction
-4 — exact values in `research.md`).
+`windows-2022` runners,
+`actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1`,
+`actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0` with
+`node-version-file: .nvmrc` (new this pass — was described only as "`actions/
+setup-node` step (or equivalent)" in `research.md`, never itself SHA-pinned
+alongside the other two actions), and SHA-pinned
+`dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c` with
+`toolchain: "1.97.1"` — **the literal `<exact-sha>` placeholders previously
+in this line are corrected to their real, GitHub-REST-API-verified commit
+SHAs this pass** (all three actions' exact values and verification dates in
+`research.md`'s GitHub Actions section).
 
 - **Linux job**: runs `just check` in full — unconditionally, including
   `just test-e2e`, since `just check` itself now always includes it.
@@ -532,15 +562,15 @@ coverage without mandatory test-first ordering.
 
 | Layer | Tool / Mechanism | Requirement IDs |
 | --- | --- | --- |
-| Architecture boundary **(Corrected — correction 11: allowlist, not blacklist)** | `cargo test -p domain -p application` compiled in isolation, **plus** a `cargo metadata`-driven check (parsed via `serde_json`) asserting the *normal* (non-dev) dependency set of `domain` is a subset of `{thiserror}` and of `application` is a subset of `{domain, thiserror, uuid, blake3}` — exactly the allowlists documented in Project Structure above. An allowlist check fails on *any* unapproved crate appearing as a normal dependency, not only a specifically-named forbidden one; `tokio` may still appear as a `dev-dependency` for `#[tokio::test]`-based unit tests without violating either allowlist, since dev-dependencies never ship in the compiled artifact and are excluded from the check by construction. | FR-009, FR-010, SC-005 |
+| Architecture boundary **(Corrected — correction 11: allowlist, not blacklist)** | `cargo test -p domain -p application` compiled in isolation, **plus** a `cargo metadata`-driven check (parsed via `serde_json`) asserting the *normal* (non-dev) dependency set of `domain` is a subset of `{thiserror}` and of `application` is a subset of `{domain, thiserror, uuid, blake3, time}` — exactly the allowlists documented in Project Structure above. An allowlist check fails on *any* unapproved crate appearing as a normal dependency, not only a specifically-named forbidden one; `tokio` may still appear as a `dev-dependency` for `#[tokio::test]`-based unit tests without violating either allowlist, since dev-dependencies never ship in the compiled artifact and are excluded from the check by construction. The same `cargo metadata` pass also asserts `#![forbid(unsafe_code)]` (or an equivalent deny-level Clippy lint) is present at the crate root of **all six** crates, `service` included with no exception (corrected this pass — correction 5) | FR-009, FR-010, SC-005 |
 | Rust unit | `cargo test` | FR-011–FR-013, FR-017 |
 | Contracts + drift | Rust contract tests + `just contracts-check`, including the WebSocket subprotocol-negotiation response assertion | FR-019–FR-021, SC-008 |
-| HTTP integration | Live-socket tests via a `reqwest`-class HTTP client against a bound instance, exercising the real `Host` validation `axum::extract::ConnectInfo`/oneshot testing can't fully exercise at the TCP layer | FR-002–FR-008, SC-002 |
+| HTTP integration | Live-socket tests via `reqwest =0.13.4` (dev-dependency, exact pin — corrected this pass, was described only as "a `reqwest`-class client") against a bound instance, exercising the real `Host` validation `axum::extract::ConnectInfo`/oneshot testing can't fully exercise at the TCP layer; includes the CORS preflight test (`contracts/http-health.md`'s CORS Preflight — new this pass, correction 1) | FR-002–FR-008, SC-002 |
 | WebSocket handshake | Integration tests using `tokio-tungstenite =0.30.0` (dev-dependency, exact pin — corrected, was a placeholder) driving real upgrade requests with custom `Sec-WebSocket-Protocol` (both offered values), `Host`, and `Origin` headers | FR-022, SC-009 |
 | Migrations | `sqlx migrate run` against an empty DB + re-run no-op assertion | FR-011, AC-042 |
-| Idempotency / conflict **(Corrected — correction 10)** | Sequential and concurrent (N-simultaneous) resubmission of the same `event_id` with an **identical** payload (expect one row, idempotent success) and, separately, with a **different** payload (expect the typed `IdempotencyConflict` error, never a silent success or a duplicate row); discard+rebuild equivalence assertion | FR-012, FR-013, SC-003, SC-004 |
+| Idempotency / conflict **(Corrected — corrections 6 and 10, this pass broadens the match/conflict criteria)** | Sequential and concurrent (N-simultaneous) resubmission of the same `event_id` with **every** producer-controlled field identical — `event_type`, canonical `payload`/`payload_hash`, and `occurred_at` (expect one row, idempotent success) — and, separately, three individual-field-mismatch cases: same `event_id` with a different `event_type` only, a different `payload` only, and a different `occurred_at` only (each expects the typed `IdempotencyConflict` error naming exactly that field via `ConflictingFields`, never a silent success or a duplicate row — `data-model.md`'s Event identity section); discard+rebuild equivalence assertion | FR-012, FR-013, SC-003, SC-004 |
 | Transactional rebuild **(New — correction 10)** | A deliberately injected mid-fold failure leaves `aggregates` unchanged from its pre-rebuild state (rollback assertion); a concurrent `events` insert attempted while a rebuild transaction is open blocks and only proceeds after the rebuild resolves | FR-013, SC-004 |
-| Launcher shutdown / orphan process **(New — correction 7)** | Send the supervisor a termination signal; assert both children exit within the bounded timeout. Separately, `SIGKILL` the supervisor itself (bypassing its cleanup handlers) and assert a subsequent `just dev` still succeeds | FR-001, FR-018, `research.md` Bootstrap design |
+| Launcher shutdown / orphan process **(Corrected — correction 4, this pass: replaces the previous indirect "a later `just dev` still succeeds" assertion with a direct child-lifecycle guarantee)** | Graceful case: send the supervisor `SIGINT`/`SIGTERM`; assert both children's specific PIDs (captured before the signal) exit within the bounded timeout. Orphan case: `SIGKILL` the supervisor itself — bypassing every cleanup handler it registered, so nothing the supervisor's own code does can be responsible for the outcome — and assert the **same two specific child PIDs** are confirmed exited (via a portable liveness probe: POSIX `process.kill(pid, 0)` raising `ESRCH`, or the Windows-equivalent process-existence check) within the bounded timeout, independent of and prior to attempting any subsequent `just dev` run. See `research.md`'s corrected mechanism (below this table's cross-reference) for exactly why this holds even under an uncatchable signal. | FR-001, FR-018, `research.md` Bootstrap design |
 | Redaction | A negative-grep check over captured test/log output asserting the token string, and the token-bearing WebSocket subprotocol value, never appear in a URL-shaped, header-echoed, or plain-text log line | FR-017, `research.md` validation approach |
 | Frontend state matrix | Vitest + React Testing Library, one test group per applicable state: Initial loading, Ready, Refreshing/Stale, Service unavailable/Offline, Error (Empty/Disabled intentionally absent — spec.md's Frontend State Matrix) | FR-023, SC-010 |
 | TanStack/Zustand separation | Vitest + RTL asserting displayed data updates flow through query invalidation/refetch, not through Zustand | FR-024, SC-011 |
@@ -631,7 +661,63 @@ traceability.md).*
 **No unresolved conflict.** One requested correction (frontend state-to-
 error mapping) was found to conflict with approved spec.md and was resolved
 in spec.md's favor per explicit human-maintainer direction during this
-revision, documented above rather than silently applied. This plan is
+revision, documented above rather than silently applied.
+
+**Post-design gate re-verification (final consistency pass)**: re-checked
+honestly against all nine corrections applied in this pass, per this pass's
+own closing instruction to re-run both gates rather than assume they still
+hold:
+
+- **I**: `traceability.md` now additionally covers `PLT-003`, `PLT-006`,
+  `PLT-007`, `SPEC-002`–`SPEC-006` (correction 7) — every PRD ID spec.md's
+  Out of Scope section names is now traced, none silently absent. **PASS**,
+  strengthened.
+- **II**: `#![forbid(unsafe_code)]` now verified uniformly across all six
+  crates including `service` (correction 5); the `application` allowlist
+  gained `time` (parsing-only, no wall-clock read — Constraints section)
+  for a genuine, narrow need, not an unbounded expansion. **PASS**,
+  strengthened.
+- **III**: the CORS preflight is now fully specified end to end (correction
+  1: no bearer token required on `OPTIONS`, exact-match `Host`/`Origin`/
+  requested-method/requested-header checks, an exact three-header grant on
+  success, no grant at all on any failure) and `Origin` is now
+  unconditionally required on the substantive `GET` request, closing a gap
+  where an absent `Origin` was previously only implicitly, not explicitly,
+  a denial condition. The orphan-process guarantee (correction 4) no longer
+  rests on unsafe FFI (no `libc::prctl`, no Windows Job Object binding) —
+  it uses the same OS-level pipe/IPC-channel-teardown property on both
+  platforms, keeping III's "no unrestricted FS/shell access" posture intact
+  while still providing a stronger, directly-verified guarantee than the
+  previous indirect test. **PASS**, strengthened.
+- **IV**: no change — HTTP/WS contract shapes and Serde tagging are
+  unaffected by this pass's corrections. **PASS**, unchanged.
+- **V**: `data-model.md`'s idempotent-vs-conflicting classification now
+  compares all three producer-controlled immutable fields
+  (`event_type`/`payload_hash`/`occurred_at`, correction 6) instead of
+  `payload_hash` alone, closing a real gap where a mismatched `event_type`
+  or `occurred_at` could have been misclassified as a legitimate retry.
+  **PASS**, strengthened.
+- **VI**: Testing Plan's idempotency/conflict row and the new orphan-process
+  row both test strictly more precisely than the previous draft (individual
+  per-field mismatch cases; a direct PID-liveness assertion instead of an
+  indirect one). **PASS**, strengthened.
+- **VII**: unaffected by this pass — no frontend-state-matrix change was
+  requested or made this pass. **PASS**, unchanged.
+- **VIII**: unaffected by this pass beyond the CORS-preflight body note
+  (preflight response bodies are never read by the browser, so no new
+  secret-exposure surface is introduced by returning `ApiError` on a failed
+  preflight). **PASS**, unchanged.
+- **IX**: `spec.md`'s `Status` field now reads `Approved` rather than
+  `Draft` (correction 8), matching how this plan and its predecessor
+  revision already treated it — a documentation-accuracy fix, not a new
+  approval being granted here. **PASS**, unchanged in substance.
+- **X**: this pass performed no git action; the `spec.md` Status edit and
+  all other edits in this pass are plain file edits pending human review,
+  identical in kind to every other edit in this plan. **PASS**, unchanged.
+
+**No unresolved conflict from this pass.** All nine corrections either
+strengthen an already-passing gate or leave it unchanged; none introduces a
+new conflict with `spec.md` or any other normative source. This plan is
 ready for `/speckit-tasks` on human approval. Per this command's explicit
 instructions, `/speckit-tasks` and `/speckit-implement` were NOT run, and no
 production code was written.

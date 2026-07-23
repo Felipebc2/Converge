@@ -8,6 +8,15 @@ No new FR/SC/AC identifier is introduced or renumbered here — this document
 only cross-references identifiers that already exist in `spec.md` and
 `docs/PRD.md`/`docs/MVP.md`.
 
+**Revision note (final consistency pass)**: this matrix's "PRD IDs
+referenced by this slice" table previously covered only the PRD IDs this
+slice's FRs actively cite, omitting several PRD IDs `spec.md`'s own Out of
+Scope section explicitly names (`PLT-003`, `PLT-006`, `PLT-007`,
+`SPEC-002`–`SPEC-006`). Completeness for "every PRD ID spec.md explicitly
+references" requires listing those too, marked out of scope with the exact
+normative justification spec.md itself already gives — added below
+(correction 7, this pass).
+
 ## Functional Requirements → PRD IDs → AC → Design Artifacts
 
 | FR | PRD ID(s) | AC | Constitution | Design artifact |
@@ -76,8 +85,11 @@ only cross-references identifiers that already exist in `spec.md` and
 | --- | --- | --- |
 | PLT-001 | Restricted (HTTP/WebSocket stands in for Tauri Commands/IPC for the whole MVP) | FR-001, spec.md Out of Scope |
 | PLT-002 | Applies (SQLite via SQLx, forward-only migrations) | FR-011, FR-013 |
+| PLT-003 | **Out of scope this slice** — see Non-Applicable IDs below (new this pass, correction 7) | spec.md Out of Scope |
 | PLT-004 | Applies (TanStack Query manages Rust-derived state; Zustand does not) | FR-001, FR-024 |
 | PLT-005 | Restricted (Windows: build + applicable technical tests only, no E2E requirement in this slice's Windows CI job) | FR-015, `plan.md` CI section |
+| PLT-006 | **Out of scope this slice** — see Non-Applicable IDs below (new this pass, correction 7) | spec.md Out of Scope |
+| PLT-007 | **Out of scope this slice** — see Non-Applicable IDs below (new this pass, correction 7) | spec.md Out of Scope |
 | PLT-008 | Applies, non-negotiable (WebdriverIO mandated for browser E2E) | `research.md` WebdriverIO section |
 | PLT-009 | Restricted (tagged-release portion out of scope; CI-trigger portion applies) | FR-015 |
 | PLT-011 | Applies (Graphite Signal / DESIGN.md compliance for the health surface) | FR-023 |
@@ -89,6 +101,11 @@ only cross-references identifiers that already exist in `spec.md` and
 | SEC-007 | Applies as a forward-looking guardrail (redaction principle noted; not yet exercised — trivial payload only) | `data-model.md` `events.payload` |
 | SEC-008 | Restricted (redaction requirement applies; full diagnostics scope is later-slice) | FR-017 |
 | ANL-008 | Applies as a forward-looking guardrail (same redaction principle as SEC-007, noted, not yet exercised) | `data-model.md` `events.payload` |
+| SPEC-002 | **Out of scope this slice** — see Non-Applicable IDs below (new this pass, correction 7) | spec.md Out of Scope |
+| SPEC-003 | **Out of scope this slice** — see Non-Applicable IDs below (new this pass, correction 7) | spec.md Out of Scope |
+| SPEC-004 | **Out of scope this slice** — see Non-Applicable IDs below (new this pass, correction 7) | spec.md Out of Scope |
+| SPEC-005 | **Out of scope this slice** — see Non-Applicable IDs below (new this pass, correction 7) | spec.md Out of Scope |
+| SPEC-006 | **Out of scope this slice** — see Non-Applicable IDs below (new this pass, correction 7) | spec.md Out of Scope |
 
 ## Non-Applicable IDs — explicit justification
 
@@ -114,7 +131,34 @@ without explanation:
 - **SEC-004** (provider credential handling): vacuously satisfied, same
   reasoning as AC-036/AC-037 above — they cite the same underlying
   requirement.
+- **PLT-003** (Tauri IPC: Commands/Channels/Events) **(new this pass,
+  correction 7)**: out of scope — spec.md's Out of Scope section explicitly
+  names `PLT-001, PLT-003` as "remain[ing] restricted to React/Vite plus
+  HTTP/WebSocket for the MVP." This slice's HTTP/WebSocket contracts
+  (`contracts/`) are the documented substitute for the whole MVP, not a
+  Slice-0-specific gap; PLT-003 does not become applicable in a later
+  slice under the current architecture.
+- **PLT-006, PLT-007** (native OS packages; signed updater) **(new this
+  pass, correction 7)**: out of scope — spec.md's Out of Scope section
+  explicitly names "Installers, updater, signing, checksums, or release
+  publication (`PLT-006`, `PLT-007`, and the tagged-release portion of
+  `PLT-009`)." No packaging, distribution, or update mechanism exists at
+  any point in this slice's design; both remain deferred to whichever
+  slice first ships a distributable artifact.
+- **SPEC-002 through SPEC-006** (Spec Kit product integration:
+  Initialization, Shell Approval, Lifecycle Board and Artifacts, Monitoring
+  and Gates, SDD Analytics) **(new this pass, correction 7)**: out of scope
+  — spec.md's Out of Scope section explicitly names "Spec Kit product
+  integration (`SPEC-002` through `SPEC-006`, deferred)." Nothing in this
+  slice's design touches Spec Kit as an in-product feature (as distinct
+  from Spec Kit as the *authoring methodology* used to produce this very
+  document, which is unrelated to the `SPEC-00x` PRD IDs).
 
 No AC or PRD ID in this table is silently dropped: every one either maps to
 a concrete FR above, or appears in this section with an explicit reason it
-does not apply to Slice 0.
+does not apply to Slice 0. This pass (correction 7) added the eight PRD IDs
+above — `PLT-003`, `PLT-006`, `PLT-007`, `SPEC-002`–`SPEC-006` — all of
+which spec.md's own Out of Scope section already named explicitly; the
+previous version of this matrix omitted them from the PRD IDs table
+entirely rather than listing them as explicitly out of scope, which this
+pass corrects.

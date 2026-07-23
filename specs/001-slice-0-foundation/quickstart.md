@@ -11,6 +11,14 @@ Correction), and the Complete Gate section removes the previous
 environment-dependent opt-out for browser E2E — `just check` now always
 includes it (correction 7).
 
+**Revision note (final consistency pass)**: the Security Boundary section
+below now demonstrates an absent-`Origin` denial and a CORS preflight
+denial explicitly (correction 1, this pass — `contracts/http-health.md`'s
+CORS Preflight section); "orphan-process behavior" throughout this guide
+now refers to the corrected, directly-verified child-lifecycle guarantee
+(correction 4, this pass — `research.md`'s corrected mechanism), not the
+previous draft's indirect "a later `just dev` still succeeds" check.
+
 ## Prerequisites
 
 - The pinned Rust toolchain, installed via `rustup` — a `rust-toolchain.toml`
@@ -89,9 +97,23 @@ curl -i -H "Host: example.com" http://127.0.0.1:<port>/api/health
 # Correct Host, disallowed Origin -> 403 (check order 2)
 curl -i -H "Origin: http://evil.example" http://127.0.0.1:<port>/api/health
 
+# Correct Host, Origin absent entirely -> 403 (check order 2 — corrected
+# this pass: Origin is REQUIRED on every request, not merely validated
+# "when present"; an absent Origin is denied identically to a mismatched
+# one, contracts/http-health.md)
+curl -i http://127.0.0.1:<port>/api/health
+
 # Correct Host and Origin, missing/wrong token -> 401 (check order 3)
 curl -i -H "Origin: http://127.0.0.1:<vite-port>" \
      -H "Authorization: Bearer wrong-token" \
+     http://127.0.0.1:<port>/api/health
+
+# CORS preflight with a disallowed requested method -> 403, no CORS grant
+# (new this pass — contracts/http-health.md's CORS Preflight section)
+curl -i -X OPTIONS \
+     -H "Origin: http://127.0.0.1:<vite-port>" \
+     -H "Access-Control-Request-Method: POST" \
+     -H "Access-Control-Request-Headers: authorization" \
      http://127.0.0.1:<port>/api/health
 ```
 
@@ -100,11 +122,12 @@ the ordinary flow — by design, per `research.md`, it never appears
 anywhere a Contributor would casually copy it from (no log line, no URL, no
 file). The automated integration suite (`just test-integration`) is the
 authoritative way to exercise a fully-authenticated request; this manual
-section only demonstrates the three denial paths.
+section only demonstrates denial paths, not the successful case.
 
-**Expected outcome**: SC-002 — every malformed combination above is denied;
-a correctly formed request (which the automated suite constructs, not this
-manual guide) succeeds.
+**Expected outcome**: SC-002 — every malformed combination above is denied,
+including an absent `Origin` and a disallowed CORS preflight (both
+corrected/added this pass); a correctly formed request (which the
+automated suite constructs, not this manual guide) succeeds.
 
 ## Validating Persistence (User Story 3)
 
