@@ -61,6 +61,19 @@ required answering before touching it — **no evidence of human approval
 was found, so it was left unchanged and this plan stops for explicit human
 direction on that specific point** (see the note at the end of this file).
 
+**Revision note (human-approval confirmation pass)**: the human maintainer
+has since confirmed `docs/PRODUCT.md` version 1.0.0 as formally approved.
+`docs/PRODUCT.md`'s `Status` field now reads `Approved` (previously `Draft
+for approval`) and its `Last updated` date is synchronized to the date of
+this confirmation. This closes point 4 of the prior pass: Principle I's gate
+(below) now reports **PASS** without qualification, and the "One unresolved
+item" note at the end of this file — including the alternative under which
+this plan could proceed with `docs/PRODUCT.md` still in `Draft` — no longer
+applies and has been removed. No other section of this plan changes as a
+result of this confirmation. Per this pass's own instructions,
+`/speckit-tasks` and `/speckit-implement` were still NOT run; this plan
+stops here for final human review.
+
 ## Summary
 
 Slice 0 proves the architectural seams every later MVP slice depends on: one
@@ -272,6 +285,14 @@ on every other point but surfaces this one for the human maintainer rather
 than resolving it unilaterally (see the note at the end of this file). **IV
 through X**: unaffected by this pass's four corrections, remain **PASS**
 unchanged.
+
+**Pre-design gate re-verification (human-approval confirmation pass)**: the
+human maintainer has confirmed `docs/PRODUCT.md` version 1.0.0 as formally
+approved; its `Status` field now reads `Approved`. This closes the one open
+point from the previous re-verification above. **I now reports PASS without
+qualification** — every normative source this plan depends on, including
+`docs/PRODUCT.md`, is confirmed approved. **II through X**: unaffected by
+this confirmation, remain **PASS** as previously stated.
 
 ## Project Structure
 
@@ -872,17 +893,26 @@ this pass's own closing instruction to re-run both gates:
 - **X**: this pass performed no git action; every edit remains a plain file
   edit pending human review. **PASS**, unchanged.
 
-**One unresolved item from this pass**: Principle I's gate is open on
-`docs/PRODUCT.md`'s approval status specifically (point 4) — this is a
-**stop-for-human-review condition**, not a silent pass. Everything else in
-this pass (points 1–3) strengthens an already-passing gate or leaves it
-unchanged, with no new conflict introduced. This plan does not proceed past
-this point on point 4 without explicit human direction: either (a)
-confirmation that `docs/PRODUCT.md` has in fact been human-approved, so its
-`Status` field and the Constitution sync report can be updated accordingly,
-or (b) an explicit decision to leave `docs/PRODUCT.md` in `Draft for
-approval` for now, which this plan can also proceed under (Slice 0's own
-`spec.md` traces to PRD/MVP, not directly to `PRODUCT.md`'s approval
-state) — but that is the human maintainer's call to make, not this pass's
-to assume. Per this command's explicit instructions, `/speckit-tasks` and
-`/speckit-implement` were NOT run, and no production code was written.
+**Post-design gate re-verification (human-approval confirmation pass)**: the
+human maintainer has confirmed `docs/PRODUCT.md` version 1.0.0 as formally
+approved. Its `Status` field now reads `Approved` and its `Last updated`
+date is synchronized to the date of this confirmation.
+
+- **I**: **resolved — now PASS without qualification.** The prior pass's
+  open point (whether `docs/PRODUCT.md` had been human-approved before its
+  `Status` field could be synced) is closed by explicit human confirmation.
+  `docs/PRODUCT.md`'s `Status` field has been updated accordingly. No
+  Constitution sync report in `.specify/memory/constitution.md` references a
+  `PRODUCT.md` Draft/Approved status, so none required a corresponding
+  update. **PASS**.
+- **II through X**: unaffected by this confirmation; each remains at the
+  status recorded in the "final blocking-consistency pass" re-verification
+  above. **PASS**, unchanged.
+
+**No unresolved item remains from this pass.** The previous pass's single
+open point — Principle I's gate on `docs/PRODUCT.md`'s approval status — is
+now closed by explicit human confirmation, and the alternative under which
+this plan could have proceeded with `docs/PRODUCT.md` left in `Draft for
+approval` no longer applies. Per this pass's own explicit instructions,
+`/speckit-tasks` and `/speckit-implement` were NOT run, and no production
+code was written. This plan stops here for final human review.

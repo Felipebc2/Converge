@@ -1,8 +1,8 @@
 # Converge — Product Definition
 
 **Version:** 1.0.0  
-**Status:** Draft for approval  
-**Last updated:** 2026-07-21
+**Status:** Approved  
+**Last updated:** 2026-07-23
 
 ## 1. Document Role
 
