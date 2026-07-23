@@ -62,7 +62,7 @@ Templates requiring updates:
   No outdated agent-specific references found.
 
 Follow-up TODOs: None. `docs/PRD.md`, `docs/PRODUCT.md`, and `docs/DESIGN.md`
-referenced by Principle I now exist and are approved (2026-07-22), closing the
+referenced by Principle I now exist and are approved (2026-07-23), closing the
 gap noted at 1.0.1 ratification. `MVP.md` (referenced by PRD.md Section 20) and
 ADR records remain not yet created; their absence does not block ratification
 since Principle I governs their authority once created, not their existence.

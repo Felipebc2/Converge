@@ -901,10 +901,12 @@ date is synchronized to the date of this confirmation.
 - **I**: **resolved — now PASS without qualification.** The prior pass's
   open point (whether `docs/PRODUCT.md` had been human-approved before its
   `Status` field could be synced) is closed by explicit human confirmation.
-  `docs/PRODUCT.md`'s `Status` field has been updated accordingly. No
-  Constitution sync report in `.specify/memory/constitution.md` references a
-  `PRODUCT.md` Draft/Approved status, so none required a corresponding
-  update. **PASS**.
+  `docs/PRODUCT.md`'s `Status` field has been updated accordingly. The
+  Constitution's Sync Impact Report in `.specify/memory/constitution.md`
+  (Follow-up TODOs note) has been synchronized to this same confirmation: its
+  approval date for `docs/PRD.md`, `docs/PRODUCT.md`, and `docs/DESIGN.md`
+  now reads `2026-07-23`, matching `docs/PRODUCT.md`'s updated `Last
+  updated` date. **PASS**.
 - **II through X**: unaffected by this confirmation; each remains at the
   status recorded in the "final blocking-consistency pass" re-verification
   above. **PASS**, unchanged.
