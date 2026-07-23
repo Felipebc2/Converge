@@ -259,8 +259,9 @@ plan-level engineering decision**, not as the correction of a
 pre-existing approved choice — it does not alter any FR/SC/AC identifier
 and is confined to `data-model.md`'s persistence design.
 
-**Decision**: `uuid = "=1.24.0"` with the `v7` feature for `event_id`
-generation (producer-supplied, per FR-012); `blake3 = "=1.8.5"` for a
+**Decision**: `uuid = "=1.24.0"` for the `event_id` **type** (parsing and
+validating the producer-supplied UUIDv7 string, per FR-012 — see the
+ownership correction in Enforcement below); `blake3 = "=1.8.5"` for a
 `payload_hash` column added to `events` (see `data-model.md`).
 
 **Rationale**:
@@ -306,7 +307,33 @@ re-parsing the full JSON payload on every duplicate check.
 
 **Source**: [uuid crate on crates.io](https://crates.io/crates/uuid), [RFC 9562 (UUID v7)](https://www.rfc-editor.org/rfc/rfc9562.html), [blake3 crate on crates.io](https://crates.io/crates/blake3), [BLAKE3 spec/repo](https://github.com/BLAKE3-team/BLAKE3)
 
-**Enforcement**: `Cargo.toml`: `uuid = { version = "=1.24.0", features = ["v7"] }`, `blake3 = "=1.8.5"`, both as normal dependencies of `application` only (ID and hash generation is an application-layer concern in the `RecordProbeEvent` use case, not a domain invariant and not an adapter I/O concern — see the Architecture Boundary allowlists below).
+**Enforcement (corrected — final blocking-consistency pass, point 3)**:
+`Cargo.toml`: `uuid = "=1.24.0"` (default features — **no** `v7` feature) and
+`blake3 = "=1.8.5"` as normal dependencies of `application` only. This
+corrects a genuine contradiction the previous pass introduced: this line
+previously read "ID and hash generation is an application-layer concern,"
+which conflicts with `data-model.md`'s "Event identity: generation,
+preservation, and canonical comparison" section — **the producer alone
+generates `event_id`, exclusively, and `application` never generates,
+mutates, or substitutes it** (that section's own wording, unchanged since
+the previous pass; only this line's contradiction of it is corrected now).
+`application` depends on `uuid` solely for the `Uuid` **type** — parsing and
+validating the producer-supplied `event_id` string as a well-formed UUID
+when `RecordProbeEvent` receives it, and typing it through the use case and
+the `EventRepository` port signature — never to call a generation function.
+The `v7` feature specifically gates `Uuid::now_v7()` (the generation
+method); since `application` never generates an `event_id`, it does not
+enable that feature. The producer that *does* generate a UUIDv7 — in this
+slice, exclusively the integration test suite (`data-model.md`) — enables
+`features = ["v7"]` on its own `uuid` dev-dependency edge (`tests/
+integration/`'s own `Cargo.toml`/test target), which is outside `application`'s
+normal-dependency allowlist and therefore outside the architecture-boundary
+check's scope by design (dev-dependencies never ship in the compiled
+artifact — Testing Plan, `plan.md`). BLAKE3 **hash generation** genuinely is
+an `application`-layer concern, unchanged: computing `payload_hash` is part
+of the idempotency/conflict business rule `RecordProbeEvent` evaluates
+(`data-model.md`'s Concurrency and Conflict Behavior), not a domain
+invariant and not an adapter I/O concern.
 
 ### Token/entropy generation
 
@@ -478,11 +505,33 @@ was never given its own pinned entry in the previous pass despite every
 Serde attribute (`rename_all`, `tag`, `rename_all_fields`) in `contracts/`
 depending on the exact version's attribute support. `serde_json` is the
 concrete JSON backend: `adapters-http` uses it (via `axum::Json`, which
-depends on it, and directly to build `ApiError` bodies) and
-`adapters-persistence` uses it to produce the canonical serialized
-`payload` bytes `data-model.md`'s Event identity section hashes with
-BLAKE3 — both re-verified current stable directly against the crates.io
-API on 2026-07-23.
+depends on it, and directly to build `ApiError` bodies), and — corrected
+this pass, point 3 — `application` uses it, not `adapters-persistence`, to
+produce the canonical serialized `payload` bytes `data-model.md`'s Event
+identity section hashes with BLAKE3. The previous pass named
+`adapters-persistence` for this in error, contradicting `data-model.md`'s
+own statement that `payload_hash` is "computed by the application layer at
+insert time" and that canonical serialization happens "precisely once per
+`RecordProbeEvent` invocation" (an `application` use case, not a repository
+method). `application`'s use of `serde_json` here is narrow and does not
+require the `derive` feature or a `#[derive(Serialize)]`-bearing
+application-owned struct (which would reintroduce the wire-attribute
+leakage the `contracts`-crate split specifically exists to avoid, Project
+Structure): `RecordProbeEvent` builds the canonical payload as a
+`serde_json::Value` directly (e.g. `serde_json::json!({"note": note})`),
+calls `.to_string()` on it for both the stored `payload` column and the
+BLAKE3 input, and never derives `Serialize` on any `application`- or
+`domain`-owned type. This keeps `serde_json`'s use in `application` a plain
+data-format/hashing utility — the same category as `blake3`/`uuid`/`time`,
+none of which are transport, DB, UI, filesystem, PTY, Tauri, or
+provider-specific — rather than a wire-format concern, so Constitution II's
+actual constraint on `application` is unaffected. `adapters-persistence`,
+correspondingly, no longer depends on `serde_json` at all: its
+`EventRepository` implementation receives the already-serialized `payload`
+string and the already-computed `payload_hash` string from `application`
+and binds them as plain SQL parameters via `sqlx` — no JSON library is
+needed at the persistence boundary. All versions re-verified current stable
+directly against the crates.io API on 2026-07-23.
 
 **Alternatives considered**: none for `serde` itself — it is the
 unconditional ecosystem standard `ts-rs`, `axum`, and `sqlx` all already
@@ -496,7 +545,15 @@ requirements.
 
 **Source**: [serde on crates.io](https://crates.io/crates/serde), [serde_json on crates.io](https://crates.io/crates/serde_json)
 
-**Enforcement**: `Cargo.toml`: `serde = { version = "=1.0.229", features = ["derive"] }` as a normal dependency of `contracts` (and transitively available wherever `contracts` types are used); `serde_json = "=1.0.151"` as a normal dependency of `adapters-http` and `adapters-persistence` (Project Structure allowlists, `plan.md`).
+**Enforcement (corrected — final blocking-consistency pass, point 3)**:
+`Cargo.toml`: `serde = { version = "=1.0.229", features = ["derive"] }` as a
+normal dependency of `contracts` (and transitively available wherever
+`contracts` types are used); `serde_json = "=1.0.151"` as a normal
+dependency of `application` (canonical payload serialization for BLAKE3
+hashing, above — corrected from `adapters-persistence`) and `adapters-http`
+(builds `ApiError`/`HealthResponse` JSON bodies) — **not**
+`adapters-persistence`, whose allowlist no longer includes `serde_json`
+(Project Structure allowlists, `plan.md`).
 
 ### Timestamp implementation — time **(New this pass — `occurred_at`/
 `recorded_at`/`checkedAt`/`serverTime` were always specified as ISO 8601
@@ -811,21 +868,43 @@ contract files.
 
 ### Vitest / React Testing Library
 
-**Decision**: `vitest@4.1.10`, `@testing-library/react@16.3.2`.
+**Decision**: `vitest@4.1.10`, `@testing-library/react@16.3.2`, `jsdom@29.1.1`
+(new this pass — `vitest`'s DOM test environment, previously implied by
+`vitest.config.ts`'s `environment: "jsdom"` but never itself a pinned
+dependency), `@testing-library/dom@10.4.1` (new this pass —
+`@testing-library/react`'s own required peer, previously left to float as
+an unpinned transitive install).
 
 **Rationale**: Vitest 5 exists only as a beta; `4.1.x` is the actively
 patched stable production line — the correct pin for a foundation being
 laid now. `@testing-library/react@16.3.2` is current stable and supports
-React 19's `use()`/Suspense model.
+React 19's `use()`/Suspense model. `jsdom` is not optional: Vitest has no
+built-in DOM — `environment: "jsdom"` in `vitest.config.ts` (Frontend State
+Matrix and accessibility tests, `plan.md` Testing Plan) requires `jsdom` to
+be present as an explicit dependency, and leaving it unpinned means CI could
+resolve a different `jsdom` version than a contributor's local install.
+`@testing-library/dom` is `@testing-library/react`'s declared peer
+dependency (the query/`fireEvent` engine `@testing-library/react` itself
+wraps for React); pinning it exactly, rather than trusting whatever
+`@testing-library/react@16.3.2`'s own `peerDependencies` range resolves to
+at install time, keeps the query behavior contributors see locally
+identical to CI's. Both versions re-verified current stable directly
+against the npm registry on 2026-07-23.
 
 **Alternatives considered**: `vitest@5.0.0-beta.x` — rejected, pre-release.
 Jest — out of scope; Vite-native Vitest is the natural fit given the pinned
-Vite 8 toolchain and avoids a second transform pipeline.
+Vite 8 toolchain and avoids a second transform pipeline. `happy-dom` (a
+faster jsdom alternative) — rejected: `jsdom` has broader API-surface
+fidelity (relevant to `jest-axe`'s DOM-inspection needs) and no measured
+test-suite runtime problem exists in this slice's small test count to
+justify the fidelity trade-off.
 
-**Source**: [vitest versions on npm](https://www.npmjs.com/package/vitest?activeTab=versions), [vitest releases](https://github.com/vitest-dev/vitest/blob/main/docs/releases.md)
+**Source**: [vitest versions on npm](https://www.npmjs.com/package/vitest?activeTab=versions), [vitest releases](https://github.com/vitest-dev/vitest/blob/main/docs/releases.md), [jsdom on npm](https://www.npmjs.com/package/jsdom), [@testing-library/dom on npm](https://www.npmjs.com/package/@testing-library/dom)
 
 **Enforcement**: `apps/web/package.json` devDependencies:
-`"vitest": "4.1.10"`, `"@testing-library/react": "16.3.2"`; `vitest.config.ts`.
+`"vitest": "4.1.10"`, `"@testing-library/react": "16.3.2"`,
+`"jsdom": "29.1.1"`, `"@testing-library/dom": "10.4.1"`; `vitest.config.ts`
+sets `test.environment = "jsdom"`.
 
 ### Accessibility test tooling — jest-axe **(Corrected: was an undocumented
 placeholder)**

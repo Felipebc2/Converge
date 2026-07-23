@@ -37,6 +37,30 @@ approved; and a literal miscount ("two" instead of three) of the WebSocket
 message shapes, also present in this file. Full technical detail again
 lives in `research.md`, `data-model.md`, `contracts/`, and `traceability.md`.
 
+**Revision note (final blocking-consistency pass)**: a third, targeted
+correction closed four remaining blocking gaps, each marked **(point N,
+this pass)** at the relevant section: (1) the CORS preflight still left an
+*absent* `Access-Control-Request-Method` unhandled and the actual `200`
+response never stated its own required `Access-Control-Allow-Origin`
+header — both corrected in `contracts/http-health.md`; (2) `jsdom` and
+`@testing-library/dom` were genuine, load-bearing frontend test
+dependencies (Vitest's DOM environment and `@testing-library/react`'s own
+peer, respectively) that had never been pinned — now `jsdom =29.1.1` /
+`@testing-library/dom =10.4.1`, `research.md`; (3) a real contradiction
+between `research.md` (claiming `application` generates `event_id`, and
+`adapters-persistence` performs canonical serialization/BLAKE3 hashing) and
+`data-model.md` (which already correctly assigned both — producer-only
+generation, `application`-only serialization/hashing) is resolved in
+`research.md`'s favor of `data-model.md`'s wording; `application`'s
+allowlist gains `serde_json` and drops the `uuid` `v7` feature (default
+features only — parsing/typing, never generation);
+`adapters-persistence`'s allowlist drops `serde_json` entirely (Project
+Structure, below); (4) `docs/PRODUCT.md`'s `Status` field (`Draft for
+approval`) was checked against the human-approval question this pass
+required answering before touching it — **no evidence of human approval
+was found, so it was left unchanged and this plan stops for explicit human
+direction on that specific point** (see the note at the end of this file).
+
 ## Summary
 
 Slice 0 proves the architectural seams every later MVP slice depends on: one
@@ -87,10 +111,17 @@ yet).
 `research.md`'s "Exact-pin policy") — `axum =0.8.9`, `tower-http =0.7.0`,
 `tokio =1.53.1`, `sqlx =0.9.0` (sqlite/runtime-tokio/macros/migrate),
 `ts-rs =12.0.1`, `rand =0.10.2`, `thiserror =2.0.19`, `uuid =1.24.0`
-(feature `v7` — new, event-identity decision), `blake3 =1.8.5` (new,
-payload-hash decision), `serde =1.0.229` (feature `derive`) and
-`serde_json =1.0.151` (new this pass — were implied by every `#[derive
-(serde::Serialize...)]` in `contracts/` but never their own pinned entry),
+(default features only in `application` — **corrected this pass, point 3**:
+the `v7` feature, which gates *generation*, belongs only to the producer's
+own dev-dependency edge, never to `application`, which only parses/types a
+producer-supplied `event_id`; see Project Structure), `blake3 =1.8.5` (new,
+payload-hash decision), `serde =1.0.229` (feature `derive`, `contracts`
+only) and `serde_json =1.0.151` (were implied by every `#[derive
+(serde::Serialize...)]` in `contracts/` but never their own pinned entry;
+**reassigned this pass, point 3**, from `adapters-persistence` to
+`application` — canonical payload serialization for BLAKE3 hashing is an
+`application`-layer concern, matching `data-model.md`'s "Event identity"
+section, which `research.md` previously contradicted),
 `time =0.3.54` (features `formatting`/`parsing`/`serde` in `adapters-http`;
 `parsing` only in `application` — new this pass, the timestamp
 implementation `occurred_at` validation and `checkedAt`/`serverTime`
@@ -109,7 +140,11 @@ pass, same reason — was `5.101.2`), `zustand 5.0.14`, `@vitejs/plugin-react
 (corrected — was a placeholder), `typescript-eslint 8.65.0` (corrected —
 was a placeholder), `eslint-plugin-react-hooks 7.1.1` (corrected — was a
 placeholder), `prettier 3.9.6`, `vitest 4.1.10` +
-`@testing-library/react 16.3.2`, `jest-axe 10.0.0` (corrected — was a
+`@testing-library/react 16.3.2`, `jsdom 29.1.1` (new this pass, point 2 —
+Vitest's DOM test environment, previously implied by `vitest.config.ts` but
+never itself pinned) + `@testing-library/dom 10.4.1` (new this pass, point
+2 — `@testing-library/react`'s own required peer, previously left
+unpinned), `jest-axe 10.0.0` (corrected — was a
 placeholder; chosen over the unmaintained `vitest-axe`),
 `webdriverio 9.30.0`/`@wdio/cli 9.30.0`/`@wdio/local-runner 9.30.0`/
 `@wdio/mocha-framework 9.30.0`/`@wdio/spec-reporter 9.29.1` (corrected and
@@ -210,6 +245,34 @@ change (correction 8) documents an approval state that already existed in
 practice (this plan already presupposed it) rather than granting a new one.
 No principle regresses; all ten remain **PASS**.
 
+**Pre-design gate re-verification (final blocking-consistency pass)**:
+re-checked honestly against all four corrections in this third pass. **III**
+is strengthened (point 1: the CORS preflight now denies an absent
+`Access-Control-Request-Method`, not only a wrong one, and the actual `200`
+response now states its own required `Access-Control-Allow-Origin` header —
+closing a real gap where a successful, allowed-origin response could have
+been unreadable by the frontend despite passing every server-side check).
+**II** is strengthened (point 3: `application`'s allowlist now precisely
+matches its actual responsibilities — `serde_json` for the canonical
+serialization it genuinely performs, `uuid` without an unused `v7` feature
+it never exercises — resolving a real self-contradiction between
+`research.md` and `data-model.md` about which layer generates `event_id`
+and which layer hashes the payload, rather than leaving two normative
+documents in this feature disagreeing with each other). **I is not fully
+resolved by this pass** — point 4 required checking whether
+`docs/PRODUCT.md` (a normative source ranked above this feature's own
+artifacts per `AGENTS.md`'s Instruction Priority) has been human-approved
+before touching its `Status` field; `docs/PRODUCT.md` itself still reads
+`Status: Draft for approval`, and no commit, note, or other evidence of a
+separate human-approval event was found. Per this pass's own explicit
+instruction ("otherwise stop for explicit human approval"), `docs/
+PRODUCT.md` was left unchanged, and **Principle I's gate is reported here
+as open on this one point, not silently marked PASS** — this plan proceeds
+on every other point but surfaces this one for the human maintainer rather
+than resolving it unilaterally (see the note at the end of this file). **IV
+through X**: unaffected by this pass's four corrections, remain **PASS**
+unchanged.
+
 ## Project Structure
 
 ### Documentation (this feature)
@@ -251,16 +314,36 @@ crates/
 ├── application/              # Use cases (RecordProbeEvent, RebuildAggregate)
 │                             # and inbound/outbound ports (traits only).
 │                             # Normal-dependency ALLOWLIST: {domain (path),
-│                             # thiserror, uuid (feature "v7"), blake3,
-│                             # time (feature "parsing" only — new this
-│                             # pass, correction 6: validates the
-│                             # producer-supplied occurred_at string is a
-│                             # well-formed RFC 3339 timestamp; never reads
-│                             # the wall clock, so Application stays free
-│                             # of "now"-dependent, untestable behavior)}.
+│                             # thiserror, uuid (default features only —
+│                             # corrected this pass, point 3: the Uuid TYPE,
+│                             # to parse/validate the producer-supplied
+│                             # event_id string; never the "v7" feature,
+│                             # since application never GENERATES an
+│                             # event_id — see "Event identity" in
+│                             # data-model.md, and the corrected rationale
+│                             # in research.md), blake3 (computes
+│                             # payload_hash), serde_json (reassigned this
+│                             # pass, point 3, from adapters-persistence —
+│                             # builds the canonical payload as a
+│                             # serde_json::Value and serializes it once per
+│                             # RecordProbeEvent call, the bytes blake3
+│                             # hashes; no #[derive(Serialize)] on any
+│                             # application-owned type, so this stays a
+│                             # data-format utility, not a wire-format
+│                             # concern — research.md), time (feature
+│                             # "parsing" only — correction 6, previous
+│                             # pass: validates the producer-supplied
+│                             # occurred_at string is a well-formed RFC 3339
+│                             # timestamp; never reads the wall clock, so
+│                             # Application stays free of "now"-dependent,
+│                             # untestable behavior)}.
 │                             # `tokio` appears only as a dev-dependency
 │                             # (for #[tokio::test]-based unit tests), never
-│                             # a normal dependency.
+│                             # a normal dependency. The producer that
+│                             # generates a UUIDv7 event_id (in this slice,
+│                             # the integration test suite) enables uuid's
+│                             # "v7" feature only on its own dev-dependency
+│                             # edge, outside this allowlist's scope.
 ├── contracts/                 # Wire-level request/response/message DTOs only
 │                             # (HealthResponse, HealthStatus, ApiError,
 │                             # WsMessage). ts-rs derives live here.
@@ -291,10 +374,16 @@ crates/
 │                             # (EventRepository, AggregateRepository).
 │                             # Normal-dependency ALLOWLIST: {application
 │                             # (path), domain (path), sqlx, tokio,
-│                             # thiserror, serde_json (new this pass —
-│                             # serializes the canonical payload bytes
-│                             # data-model.md's Event identity section
-│                             # hashes with BLAKE3)}.
+│                             # thiserror}. No serde_json here — corrected
+│                             # this pass, point 3: canonical payload
+│                             # serialization and BLAKE3 hashing are an
+│                             # application-layer concern (above), not a
+│                             # persistence-adapter one; this crate receives
+│                             # the already-serialized payload string and
+│                             # already-computed payload_hash string from
+│                             # application and binds them as plain SQL
+│                             # parameters — no JSON library needed at the
+│                             # persistence boundary.
 └── service/                   # Binary crate — composition root. Owns
                               # startup: reads CONVERGE_ALLOWED_ORIGIN from
                               # its own env (set by the supervisor — see
@@ -392,7 +481,8 @@ tests/
 
 **Structure Decision**: six Rust crates preserve inward Clean Architecture
 dependencies exactly (`domain` → nothing but `thiserror`; `application` →
-`domain` + `thiserror` + `uuid` + `blake3`; `adapters-http`/
+`domain` + `thiserror` + `uuid` + `blake3` + `serde_json` + `time`
+(corrected this pass, point 3); `adapters-http`/
 `adapters-persistence` → `application` + `domain` + `contracts` where
 relevant; `service` → everything). `contracts` is deliberately a sibling of
 `domain`/`application`, not a dependency of either — it holds wire DTOs and
@@ -446,12 +536,18 @@ full reasoning, prior-art comparison, and validation approach.
   request, not merely "when present" — corrected this pass, correction 1) →
   token (401) — first failure wins, never partially trusted. `200` body:
   `{status, service, version, checkedAt}` (camelCase on the wire —
-  corrected, correction 5). The `OPTIONS` CORS preflight is now specified
-  as its own, separately ordered check sequence (`Host` → `Origin` →
-  requested method `GET` → requested header `authorization`), returning an
-  exact three-header closed-CORS grant on success and no grant at all on
+  corrected, correction 5); the `200` response itself now also always
+  carries `Access-Control-Allow-Origin` (corrected — point 1, final
+  blocking-consistency pass: the preflight grant and the actual response's
+  own CORS header are two separate Fetch-spec checks, `contracts/
+  http-health.md`'s Success Response). The `OPTIONS` CORS preflight is now
+  specified as its own, separately ordered check sequence (`Host` →
+  `Origin` → requested method `GET`, now denying an absent value
+  identically to a wrong one — corrected, point 1, final
+  blocking-consistency pass → requested header `authorization`), returning
+  an exact three-header closed-CORS grant on success and no grant at all on
   any failure — carries no bearer token by the CORS specification itself,
-  never checked (new — correction 1, this pass; full detail in
+  never checked (correction 1, previous pass; full detail in
   `contracts/http-health.md`'s CORS Preflight section).
 - **WebSocket**: `GET /api/ws` (upgrade), defined in
   `contracts/websocket-proof.md`. Same `Host`(400)/`Origin`-allowlist(403)/
@@ -562,10 +658,10 @@ coverage without mandatory test-first ordering.
 
 | Layer | Tool / Mechanism | Requirement IDs |
 | --- | --- | --- |
-| Architecture boundary **(Corrected — correction 11: allowlist, not blacklist)** | `cargo test -p domain -p application` compiled in isolation, **plus** a `cargo metadata`-driven check (parsed via `serde_json`) asserting the *normal* (non-dev) dependency set of `domain` is a subset of `{thiserror}` and of `application` is a subset of `{domain, thiserror, uuid, blake3, time}` — exactly the allowlists documented in Project Structure above. An allowlist check fails on *any* unapproved crate appearing as a normal dependency, not only a specifically-named forbidden one; `tokio` may still appear as a `dev-dependency` for `#[tokio::test]`-based unit tests without violating either allowlist, since dev-dependencies never ship in the compiled artifact and are excluded from the check by construction. The same `cargo metadata` pass also asserts `#![forbid(unsafe_code)]` (or an equivalent deny-level Clippy lint) is present at the crate root of **all six** crates, `service` included with no exception (corrected this pass — correction 5) | FR-009, FR-010, SC-005 |
+| Architecture boundary **(Corrected — correction 11: allowlist, not blacklist)** | `cargo test -p domain -p application` compiled in isolation, **plus** a `cargo metadata`-driven check (parsed via `serde_json`) asserting the *normal* (non-dev) dependency set of `domain` is a subset of `{thiserror}` and of `application` is a subset of `{domain, thiserror, uuid, blake3, serde_json, time}` — exactly the allowlists documented in Project Structure above (updated this pass, point 3, to include `serde_json` and to require `uuid` without the `v7` feature). An allowlist check fails on *any* unapproved crate appearing as a normal dependency, not only a specifically-named forbidden one; `tokio` may still appear as a `dev-dependency` for `#[tokio::test]`-based unit tests without violating either allowlist, since dev-dependencies never ship in the compiled artifact and are excluded from the check by construction. The same `cargo metadata` pass also asserts `#![forbid(unsafe_code)]` (or an equivalent deny-level Clippy lint) is present at the crate root of **all six** crates, `service` included with no exception (corrected this pass — correction 5) | FR-009, FR-010, SC-005 |
 | Rust unit | `cargo test` | FR-011–FR-013, FR-017 |
 | Contracts + drift | Rust contract tests + `just contracts-check`, including the WebSocket subprotocol-negotiation response assertion | FR-019–FR-021, SC-008 |
-| HTTP integration | Live-socket tests via `reqwest =0.13.4` (dev-dependency, exact pin — corrected this pass, was described only as "a `reqwest`-class client") against a bound instance, exercising the real `Host` validation `axum::extract::ConnectInfo`/oneshot testing can't fully exercise at the TCP layer; includes the CORS preflight test (`contracts/http-health.md`'s CORS Preflight — new this pass, correction 1) | FR-002–FR-008, SC-002 |
+| HTTP integration | Live-socket tests via `reqwest =0.13.4` (dev-dependency, exact pin — corrected this pass, was described only as "a `reqwest`-class client") against a bound instance, exercising the real `Host` validation `axum::extract::ConnectInfo`/oneshot testing can't fully exercise at the TCP layer; includes the CORS preflight test (`contracts/http-health.md`'s CORS Preflight — correction 1, previous pass, extended this pass, point 1: an absent `Access-Control-Request-Method` case, and a `200`-response `Access-Control-Allow-Origin`-presence assertion) | FR-002–FR-008, SC-002 |
 | WebSocket handshake | Integration tests using `tokio-tungstenite =0.30.0` (dev-dependency, exact pin — corrected, was a placeholder) driving real upgrade requests with custom `Sec-WebSocket-Protocol` (both offered values), `Host`, and `Origin` headers | FR-022, SC-009 |
 | Migrations | `sqlx migrate run` against an empty DB + re-run no-op assertion | FR-011, AC-042 |
 | Idempotency / conflict **(Corrected — corrections 6 and 10, this pass broadens the match/conflict criteria)** | Sequential and concurrent (N-simultaneous) resubmission of the same `event_id` with **every** producer-controlled field identical — `event_type`, canonical `payload`/`payload_hash`, and `occurred_at` (expect one row, idempotent success) — and, separately, three individual-field-mismatch cases: same `event_id` with a different `event_type` only, a different `payload` only, and a different `occurred_at` only (each expects the typed `IdempotencyConflict` error naming exactly that field via `ConflictingFields`, never a silent success or a duplicate row — `data-model.md`'s Event identity section); discard+rebuild equivalence assertion | FR-012, FR-013, SC-003, SC-004 |
@@ -717,7 +813,76 @@ hold:
 
 **No unresolved conflict from this pass.** All nine corrections either
 strengthen an already-passing gate or leave it unchanged; none introduces a
-new conflict with `spec.md` or any other normative source. This plan is
-ready for `/speckit-tasks` on human approval. Per this command's explicit
-instructions, `/speckit-tasks` and `/speckit-implement` were NOT run, and no
-production code was written.
+new conflict with `spec.md` or any other normative source.
+
+**Post-design gate re-verification (final blocking-consistency pass)**:
+re-checked honestly against all four corrections in this third pass, per
+this pass's own closing instruction to re-run both gates:
+
+- **I**: **not fully resolved by this pass — reported, not silently
+  passed.** Point 4 required verifying `docs/PRODUCT.md` was human-approved
+  before syncing its `Status` field to `Approved`; it currently reads
+  `Draft for approval`, and no evidence of a separate approval event exists
+  in this repository (git history, commit messages, or any other normative
+  document) as of this check. This plan does not treat `PRODUCT.md` as
+  approved, does not change its `Status` field, and does not update any
+  "Constitution sync report" on the strength of an assumption — doing so
+  would be exactly the "silently choose one interpretation" `AGENTS.md`
+  prohibits when a required approval is missing. Every other traceability
+  fact in `traceability.md` is otherwise unaffected by this pass. **Gate
+  status: open on this one point pending explicit human direction; every
+  other aspect of Principle I remains PASS.**
+- **II**: `application`'s allowlist now exactly matches its real
+  responsibilities (`serde_json` added for the canonical serialization it
+  performs, `uuid`'s unused `v7` feature removed), and
+  `adapters-persistence`'s allowlist had `serde_json` removed since it no
+  longer performs serialization — both allowlists are now internally
+  consistent with `data-model.md`'s Event identity section instead of
+  contradicting it, closing a real design inconsistency `research.md`
+  previously introduced (claiming `application` generates `event_id` and
+  `adapters-persistence` serializes/hashes the payload, both wrong). **PASS**,
+  strengthened.
+- **III**: the CORS preflight now denies an absent
+  `Access-Control-Request-Method` identically to a wrong one (closing a gap
+  where a malformed, non-preflight `OPTIONS` request had no defined
+  outcome), and the actual `200` response now explicitly requires
+  `Access-Control-Allow-Origin` — without it, a browser would block the
+  frontend from reading a response that had already passed every
+  server-side security check, a real functional/security-adjacent gap (a
+  correctly-authenticated, correctly-originated request silently unusable
+  from the browser) rather than a documentation nicety. **PASS**,
+  strengthened.
+- **IV**: no change — contract shapes and Serde tagging are unaffected by
+  this pass. **PASS**, unchanged.
+- **V**: no change to `data-model.md`'s schema or rebuild semantics this
+  pass — the Event identity section's wording (who generates `event_id`,
+  which layer hashes the payload) was already correct; only `research.md`'s
+  contradiction of it is corrected. **PASS**, unchanged.
+- **VI**: Testing Plan's architecture-boundary row now asserts the
+  corrected `application` allowlist (including `serde_json`, excluding
+  `uuid`'s `v7` feature) and the HTTP integration row now includes the two
+  new CORS assertions (point 1). **PASS**, strengthened.
+- **VII**: unaffected by this pass. **PASS**, unchanged.
+- **VIII**: unaffected by this pass — no new secret-exposure surface;
+  `jsdom`/`@testing-library/dom` are test-only dev-dependencies with no
+  runtime/production exposure. **PASS**, unchanged.
+- **IX**: unaffected by this pass beyond the Command Facade/testing-plan
+  wording updates already reflected above; no competing validation path
+  introduced. **PASS**, unchanged.
+- **X**: this pass performed no git action; every edit remains a plain file
+  edit pending human review. **PASS**, unchanged.
+
+**One unresolved item from this pass**: Principle I's gate is open on
+`docs/PRODUCT.md`'s approval status specifically (point 4) — this is a
+**stop-for-human-review condition**, not a silent pass. Everything else in
+this pass (points 1–3) strengthens an already-passing gate or leaves it
+unchanged, with no new conflict introduced. This plan does not proceed past
+this point on point 4 without explicit human direction: either (a)
+confirmation that `docs/PRODUCT.md` has in fact been human-approved, so its
+`Status` field and the Constitution sync report can be updated accordingly,
+or (b) an explicit decision to leave `docs/PRODUCT.md` in `Draft for
+approval` for now, which this plan can also proceed under (Slice 0's own
+`spec.md` traces to PRD/MVP, not directly to `PRODUCT.md`'s approval
+state) — but that is the human maintainer's call to make, not this pass's
+to assume. Per this command's explicit instructions, `/speckit-tasks` and
+`/speckit-implement` were NOT run, and no production code was written.

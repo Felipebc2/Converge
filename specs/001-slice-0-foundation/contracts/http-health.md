@@ -23,6 +23,16 @@ shape) and are now specified separately (correction 1, this pass). The
 `Origin` was optional on the actual request; FR-004 requires validating
 `Origin` "on every request," which an absent header cannot satisfy.
 
+**Revision note (final blocking-consistency pass, point 1)**: two gaps
+remained after the pass above: an absent (not merely wrong)
+`Access-Control-Request-Method` on a preflight was left unhandled (CORS
+Preflight, row 3 — now an explicit denial), and the actual `200` response
+never stated its own required `Access-Control-Allow-Origin` header,
+conflating "the preflight granted CORS" with "the real response is
+readable by page script" — two genuinely separate Fetch-spec checks (Success
+Response, below). Both are corrected here with dedicated contract/
+integration test assertions (Validation Approach).
+
 **Rust source of truth**: the request/response types below are Rust structs
 (exact module path: `crates/contracts`, per `plan.md` Project Structure).
 Generated TypeScript types MUST be produced deterministically from them
@@ -82,7 +92,7 @@ provides):
 | --- | --- | --- |
 | 1 | `Host` mismatch | `400 Bad Request`, `{"error": "bad_request"}`, no CORS grant |
 | 2 | `Origin` absent, or present and not the single expected value | `403 Forbidden`, `{"error": "forbidden"}`, no CORS grant |
-| 3 | `Access-Control-Request-Method` present and not exactly `GET` | `403 Forbidden`, `{"error": "forbidden"}`, no CORS grant |
+| 3 | `Access-Control-Request-Method` absent, or present and not exactly `GET` **(corrected this pass — an absent value is now an explicit denial, not merely "present and wrong")** | `403 Forbidden`, `{"error": "forbidden"}`, no CORS grant |
 | 4 | `Access-Control-Request-Headers` does not include `authorization` (case-insensitive) | `403 Forbidden`, `{"error": "forbidden"}`, no CORS grant |
 | — | All four checks pass | `204 No Content` with the exact grant below |
 
@@ -100,6 +110,17 @@ uses no cookies (`research.md` threat #3), so there is no ambient
 credential for that header to authorize. `Access-Control-Max-Age` MAY be
 set to reduce duplicate preflights; its presence or absence changes no
 security property above, only preflight frequency.
+
+**Row 3 corrected — final blocking-consistency pass, point 1**: a genuine
+CORS preflight always carries `Access-Control-Request-Method`, since that
+header is what the Fetch specification uses to construct a preflight
+request in the first place ([Fetch §CORS-preflight
+fetch](https://fetch.spec.whatwg.org/#cors-preflight-fetch)) — a browser
+never sends an `OPTIONS` request to this path without it. An `OPTIONS`
+request missing that header is therefore not a browser-issued preflight at
+all; the previous draft only denied a *present-but-wrong* value (e.g.
+`POST`), leaving an *absent* value unhandled — a gap this correction closes
+by denying both identically.
 
 An invalid preflight (any of rows 1-4) receives **no** CORS grant — no
 `Access-Control-Allow-Origin` header at all — which is what actually stops
@@ -162,7 +183,9 @@ pub enum ApiError {
 
 ## Success Response
 
-`200 OK`, `Content-Type: application/json`
+`200 OK`, `Content-Type: application/json`,
+`Access-Control-Allow-Origin: <the single expected frontend origin>`
+**(header requirement made explicit this pass, point 1)**
 
 ```json
 {
@@ -172,6 +195,24 @@ pub enum ApiError {
   "checkedAt": "<ISO 8601 UTC timestamp>"
 }
 ```
+
+**`Access-Control-Allow-Origin` on the actual `200` response, not only on
+the preflight — corrected this pass.** A preflight granting CORS only
+authorizes the browser to *send* the real request; the real request's own
+response still needs its own `Access-Control-Allow-Origin` header, or the
+browser blocks page script from reading the response body even though the
+preflight succeeded and the request itself reached the server ([Fetch §HTTP
+network or cache fetch](https://fetch.spec.whatwg.org/#http-network-or-cache-fetch),
+the actual-response CORS check is a separate step from the preflight
+check). The previous draft's Success Response section specified only
+`Content-Type`, leaving this header unstated — every successful,
+allowed-origin `GET /api/health` response now unconditionally carries the
+exact, single, non-wildcard `Access-Control-Allow-Origin` value (never a
+wildcard, never a reflected value, matching the preflight grant's own "exact
+grant" rule above). No `Access-Control-Allow-Methods`/`-Headers` are
+required on the actual response — those are preflight-only headers; the
+actual response's own CORS gate is `Access-Control-Allow-Origin` alone
+([Fetch §CORS protocol](https://fetch.spec.whatwg.org/#http-responses)).
 
 - `status` is currently always the literal `"healthy"` when this response is
   returned at all — there is no degraded/partial state in Slice 0, since no
@@ -223,18 +264,24 @@ keeps the token itself out of that log line.
 
 - Contract test: request with a valid token/`Host`/`Origin` asserts the
   `200` shape above field-by-field, including exact `camelCase` field names
-  (FR-021).
+  (FR-021), **and asserts the exact `Access-Control-Allow-Origin` value is
+  present on that `200` response (new this pass, point 1)** — not only on
+  the preflight.
 - Negative tests: each of the three failure rows above, tested individually
   and in combination per spec.md's edge cases (FR-016), asserting the exact
   `ApiError` discriminant returned.
-- Preflight contract test **(New — correction 1, this pass)**: a valid
-  `OPTIONS` preflight (matching `Host`/`Origin`, `Access-Control-Request-
-  Method: GET`, `Access-Control-Request-Headers: authorization`) asserts the
-  exact three-header closed-CORS grant above and `204`; each of the four
+- Preflight contract test **(New — correction 1, previous pass; extended
+  this pass, point 1)**: a valid `OPTIONS` preflight (matching
+  `Host`/`Origin`, `Access-Control-Request-Method: GET`,
+  `Access-Control-Request-Headers: authorization`) asserts the exact
+  three-header closed-CORS grant above and `204`; each of the four
   preflight failure rows, tested individually, asserts no
-  `Access-Control-Allow-Origin` header is present in the response; a
-  preflight test also asserts no `Authorization` header is required or
-  inspected on `OPTIONS`.
+  `Access-Control-Allow-Origin` header is present in the response — **now
+  including a dedicated case for row 3 with `Access-Control-Request-Method`
+  omitted entirely (absent, not merely wrong), asserting the same `403`/
+  no-grant outcome as an explicitly-wrong value** (new this pass, closing
+  the gap row 3's correction above describes); a preflight test also
+  asserts no `Authorization` header is required or inspected on `OPTIONS`.
 - Drift test: CI regenerates the TypeScript client type from the Rust
   source type (including `HealthStatus` and `ApiError`) and diffs it
   against the committed generated file; any difference fails the build
